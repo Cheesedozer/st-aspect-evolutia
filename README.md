@@ -2,7 +2,7 @@
 
 <img src="https://github.com/Vectricity/st-aspect-destinia/raw/assets/assets/thumbnail_evolutia.png" alt="Thumbnail of Evolutia" width="400">
 
-Aspect: Evolutia is a SillyTavern extension for swapping a Character’s / Persona’s static Description field on-demand with organized, trigger-aware Dynamic Fields.
+Aspect: Evolutia is a SillyTavern extension for swapping a Character’s / Persona’s static Description field on-demand with organized, trigger-aware Dynamic Fields. Even swap between alter egos, like a superhero or werewolf.
 
 It is designed for Characters / Personas to evolve across arcs, stages, revelations, timelines, outfits, states, roles, or roleplay conditions. Instead of stuffing every version of a Character / Persona into the Description and asking the model to ignore irrelevant information, Aspect: Evolutia lets you split defining information into separate fields and inject only the fields that matter.
 
@@ -10,6 +10,7 @@ The goal is to make Characters / Personas cleaner, more stage-aware, and easier 
 
 ## What It Does
 
+- Adds Alter Egos for Characters.
 - Adds a Dynamic Fields mode to the Character editor and Persona editor
 - Hides the native Description field while Dynamic Fields mode is active
 - Stores Dynamic Fields per Character / Persona
@@ -50,6 +51,10 @@ The goal is to make Characters / Personas cleaner, more stage-aware, and easier 
   - Clipboard (JSON)
 - Shows a Dynamic Fields token estimate while Dynamic Fields mode is active
 - Includes extension drawer controls for Character and Persona cleanup and reset actions
+
+## Alter Egos
+
+Swap between different versions of characters, all through the same character card, manually or via keyword triggers. Each alter ego has its own dynamic fields, so your characters can be who they are meant to be in whatever form they take.
 
 ## Dynamic Fields
 
