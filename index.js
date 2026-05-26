@@ -10,7 +10,10 @@
 // Owns all external dependencies used by this extension file.
 // ============================================================================
 
-import { saveSettingsDebounced as importedSaveSettingsDebounced } from '../../../../script.js';
+import {
+    saveSettingsDebounced as importedSaveSettingsDebounced,
+    setCharacterName as importedSetCharacterName,
+} from '../../../../script.js';
 import { getContext as importedGetContext } from '../../../extensions.js';
 import { promptManager } from '../../../openai.js';
 import { MacrosParser } from '../../../macros.js';
@@ -86,6 +89,44 @@ const TRIGGER_ACTION_PHASE = Object.freeze({
     CONTENT_READY: 'content_ready',
 });
 
+const ALTER_EGO_BASE_ID = 'base';
+const ALTER_EGO_EXTRA_KEY = 'aspectEvolutia';
+const ALTER_EGO_MESSAGE_KEY = 'alterEgo';
+
+const ALTER_EGO_AVATAR_MODE = Object.freeze({
+    INHERIT: 'inherit',
+    SAME_AVATAR_DIRECTORY: 'same_avatar_directory',
+    IMAGE_FILE: 'image_file',
+    LOCAL_FILE: 'local_file',
+    URL: 'url',
+    DATA_URL: 'data_url',
+});
+
+const ALTER_EGO_AVATAR_MODE_LABELS = Object.freeze({
+    [ALTER_EGO_AVATAR_MODE.INHERIT]: 'This Character Image',
+    [ALTER_EGO_AVATAR_MODE.SAME_AVATAR_DIRECTORY]: 'Other Character Image',
+    [ALTER_EGO_AVATAR_MODE.IMAGE_FILE]: 'Upload File',
+    [ALTER_EGO_AVATAR_MODE.LOCAL_FILE]: 'Local File',
+    [ALTER_EGO_AVATAR_MODE.URL]: 'Image URL',
+    [ALTER_EGO_AVATAR_MODE.DATA_URL]: 'Embedded Image Data',
+});
+
+const PERSONA_ALTER_EGO_AVATAR_MODE_LABELS = Object.freeze({
+    [ALTER_EGO_AVATAR_MODE.INHERIT]: 'This Persona Image',
+    [ALTER_EGO_AVATAR_MODE.SAME_AVATAR_DIRECTORY]: 'Other Persona Image',
+    [ALTER_EGO_AVATAR_MODE.IMAGE_FILE]: 'Upload File',
+    [ALTER_EGO_AVATAR_MODE.LOCAL_FILE]: 'Local File',
+    [ALTER_EGO_AVATAR_MODE.URL]: 'Image URL',
+    [ALTER_EGO_AVATAR_MODE.DATA_URL]: 'Embedded Image Data',
+});
+
+const ALTER_EGO_SWAP_MODE = Object.freeze({
+    MANUAL: 'manual',
+    TRIGGERED: 'triggered',
+});
+
+const ALTER_EGO_DEFAULT_NAME = 'Base';
+
 const DEFAULT_TRIGGER_SOURCES = Object.freeze([
     TRIGGER_SOURCE.LAST_USER_MESSAGE,
 ]);
@@ -148,6 +189,23 @@ const UI = Object.freeze({
     DYNAMIC_FIELDS_IMPORT_FILE_ID: 'dsf_dynamic_fields_import_file',
     TOKEN_ID: 'dsf_token_estimate',
 
+    ALTER_EGO_ROW_ID: 'dsf_alter_ego_row',
+    ALTER_EGO_SELECT_ID: 'dsf_alter_ego_select',
+    ALTER_EGO_CREATE_ID: 'dsf_create_alter_ego',
+    ALTER_EGO_DUPLICATE_ID: 'dsf_duplicate_alter_ego',
+    ALTER_EGO_RENAME_ID: 'dsf_rename_alter_ego',
+    ALTER_EGO_DELETE_ID: 'dsf_delete_alter_ego',
+    ALTER_EGO_KEYWORD_TRIGGERS_BUTTON_ID: 'dsf_alter_ego_keyword_triggers_button',
+    ALTER_EGO_TRIGGER_SOURCES_BUTTON_ID: 'dsf_alter_ego_trigger_sources_button',
+    ALTER_EGO_AVATAR_MODE_ID: 'dsf_alter_ego_avatar_mode',
+    ALTER_EGO_AVATAR_KEY_ID: 'dsf_alter_ego_avatar_key',
+    ALTER_EGO_AVATAR_URL_ID: 'dsf_alter_ego_avatar_url',
+    ALTER_EGO_IMAGE_FILE_INPUT_ID: 'dsf_alter_ego_image_file_input',
+    ALTER_EGO_IMAGE_FILE_BUTTON_ID: 'dsf_alter_ego_image_file_button',
+    ALTER_EGO_LOCAL_FILE_PATH_ID: 'dsf_alter_ego_local_file_path',
+    ALTER_EGO_LOCAL_FILE_VERIFY_ID: 'dsf_alter_ego_local_file_verify',
+    ALTER_EGO_AVATAR_PREVIEW_ID: 'dsf_alter_ego_avatar_preview',
+
     // Persona management UI
     PERSONA_BAR_ID: 'dsf_persona_swap_bar',
     PERSONA_PANEL_ID: 'dsf_persona_panel',
@@ -163,6 +221,23 @@ const UI = Object.freeze({
     PERSONA_EXPORT_MENU_ID: 'dsf_persona_export_menu',
     PERSONA_DYNAMIC_FIELDS_IMPORT_FILE_ID: 'dsf_persona_dynamic_fields_import_file',
     PERSONA_TOKEN_ID: 'dsf_persona_token_estimate',
+
+    PERSONA_ALTER_EGO_ROW_ID: 'dsf_persona_alter_ego_row',
+    PERSONA_ALTER_EGO_SELECT_ID: 'dsf_persona_alter_ego_select',
+    PERSONA_ALTER_EGO_CREATE_ID: 'dsf_persona_create_alter_ego',
+    PERSONA_ALTER_EGO_DUPLICATE_ID: 'dsf_persona_duplicate_alter_ego',
+    PERSONA_ALTER_EGO_RENAME_ID: 'dsf_persona_rename_alter_ego',
+    PERSONA_ALTER_EGO_DELETE_ID: 'dsf_persona_delete_alter_ego',
+    PERSONA_ALTER_EGO_KEYWORD_TRIGGERS_BUTTON_ID: 'dsf_persona_alter_ego_keyword_triggers_button',
+    PERSONA_ALTER_EGO_TRIGGER_SOURCES_BUTTON_ID: 'dsf_persona_alter_ego_trigger_sources_button',
+    PERSONA_ALTER_EGO_AVATAR_MODE_ID: 'dsf_persona_alter_ego_avatar_mode',
+    PERSONA_ALTER_EGO_AVATAR_KEY_ID: 'dsf_persona_alter_ego_avatar_key',
+    PERSONA_ALTER_EGO_AVATAR_URL_ID: 'dsf_persona_alter_ego_avatar_url',
+    PERSONA_ALTER_EGO_IMAGE_FILE_INPUT_ID: 'dsf_persona_alter_ego_image_file_input',
+    PERSONA_ALTER_EGO_IMAGE_FILE_BUTTON_ID: 'dsf_persona_alter_ego_image_file_button',
+    PERSONA_ALTER_EGO_LOCAL_FILE_PATH_ID: 'dsf_persona_alter_ego_local_file_path',
+    PERSONA_ALTER_EGO_LOCAL_FILE_VERIFY_ID: 'dsf_persona_alter_ego_local_file_verify',
+    PERSONA_ALTER_EGO_AVATAR_PREVIEW_ID: 'dsf_persona_alter_ego_avatar_preview',
 
     // Extension drawer UI
     SETTINGS_ID: 'dsf_extension_settings',
@@ -189,6 +264,8 @@ const DEFAULT_STATE = Object.freeze({
     swapEnabled: false,
     initializedDefaults: false,
     fields: [],
+    activeAlterEgoId: ALTER_EGO_BASE_ID,
+    alterEgos: [],
 });
 
 const DEFAULT_MANIFEST_META = Object.freeze({
@@ -232,8 +309,14 @@ const PERSONA_TOKEN_COUNTER_SELECTORS = [
 let booted = false;
 let saveTimer = null;
 let personaSaveTimer = null;
+let alterEgoIdentitySaveTimer = null;
 let mountTimer = null;
 let personaMountTimer = null;
+let tokenEstimateTimer = null;
+let personaTokenEstimateTimer = null;
+let settingsActionStateTimer = null;
+let alterEgoVisualIdentityRefreshTimer = null;
+let personaAlterEgoVisualIdentityRefreshTimer = null;
 let currentGenerationCharacterId = undefined;
 let currentGenerationPersonaId = undefined;
 let currentGenerationId = 0;
@@ -246,9 +329,20 @@ let fieldDragAutoScrollFrame = null;
 
 const FIELD_DRAG_AUTOSCROLL_MARGIN = 80;
 const FIELD_DRAG_AUTOSCROLL_MAX_SPEED = 22;
+const FIELD_EDIT_TOKEN_ESTIMATE_DEBOUNCE_MS = 800;
+const FIELD_EDIT_SETTINGS_ACTION_DEBOUNCE_MS = 800;
+const ALTER_EGO_VISUAL_REFRESH_DEBOUNCE_MS = 200;
+
+const FIELD_EDIT_INPUT_UPDATE_OPTIONS = Object.freeze({
+    rerender: false,
+    deferTokenEstimate: true,
+    deferSettingsActionState: true,
+});
 
 const stateCache = new Map();
 const personaStateCache = new Map();
+const selectableAvatarCharactersCache = { signature: '', entries: [] };
+const selectablePersonaAvatarsCache = { signature: '', entries: [] };
 const descriptionBackups = new Map();
 const preparedPromptCache = new Map();
 
@@ -496,9 +590,73 @@ function getCharacter(characterId = getActiveCharacterId()) {
     return ctx?.characters?.[characterId] ?? null;
 }
 
-function getCharacterName(characterId = getMacroCharacterId()) {
+function getNativeCharacterName(characterId = getMacroCharacterId()) {
     const character = getCharacter(characterId);
     return String(character?.name ?? character?.data?.name ?? 'this character').trim() || 'this character';
+}
+
+function getCharacterName(characterId = getMacroCharacterId()) {
+    const alterEgo = getActiveAlterEgoForCharacter(characterId);
+
+    if (alterEgo && shouldApplyAlterEgoIdentity(characterId)) {
+        const alterEgoName = String(alterEgo.name || '').trim();
+
+        if (alterEgoName) {
+            return alterEgoName;
+        }
+    }
+
+    return getNativeCharacterName(characterId);
+}
+
+function getNativeCharacterAvatarKey(characterId = getMacroCharacterId()) {
+    const character = getCharacter(characterId);
+    return String(character?.avatar ?? character?.data?.avatar ?? '').trim();
+}
+
+function getCharacterAvatarThumbnailUrl(avatarKey, { bustCache = false } = {}) {
+    const key = String(avatarKey || '').trim();
+
+    if (!key || key === 'none') {
+        return '';
+    }
+
+    const ctx = getContext();
+
+    if (typeof ctx?.getThumbnailUrl === 'function') {
+        return ctx.getThumbnailUrl('avatar', key, bustCache);
+    }
+
+    return `/thumbnail?type=avatar&file=${encodeURIComponent(key)}${bustCache ? `&t=${Date.now()}` : ''}`;
+}
+
+function getSelectableAvatarCharacters() {
+    const ctx = getContext();
+    const characters = Array.isArray(ctx?.characters) ? ctx.characters : Object.values(ctx?.characters || {});
+    const signature = characters
+        .map((character) => `${String(character?.avatar ?? '').trim()}\u001f${String(character?.name ?? character?.data?.name ?? '').trim()}`)
+        .join('\u001e');
+
+    if (selectableAvatarCharactersCache.signature === signature) {
+        return selectableAvatarCharactersCache.entries;
+    }
+
+    selectableAvatarCharactersCache.signature = signature;
+    selectableAvatarCharactersCache.entries = characters
+        .map((character, index) => ({
+            index,
+            name: String(character?.name ?? character?.data?.name ?? '').trim(),
+            avatar: String(character?.avatar ?? '').trim(),
+        }))
+        .filter((entry) => entry.avatar && entry.avatar !== 'none')
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+    return selectableAvatarCharactersCache.entries;
+}
+
+function invalidateSelectableAvatarCharactersCache() {
+    selectableAvatarCharactersCache.signature = '';
+    selectableAvatarCharactersCache.entries = [];
 }
 
 function getCacheKey(characterId = getActiveCharacterId()) {
@@ -830,7 +988,7 @@ function getPersonaCacheKey(personaId = getActivePersonaId()) {
     return normalized || PERSONA_STATE_UNKNOWN_KEY;
 }
 
-function getPersonaName(personaId = getMacroPersonaId()) {
+function getNativePersonaName(personaId = getMacroPersonaId()) {
     const normalizedPersonaId = normalizePersonaId(personaId);
     const powerUser = getPowerUserSettings();
     const ctx = getContext();
@@ -853,6 +1011,191 @@ function getPersonaName(personaId = getMacroPersonaId()) {
     }
 
     return 'the user persona';
+}
+
+function getPersonaName(personaId = getMacroPersonaId()) {
+    const alterEgo = getActiveAlterEgoForPersona(personaId);
+
+    if (alterEgo && shouldApplyPersonaAlterEgoIdentity(personaId)) {
+        const alterEgoName = String(alterEgo.name || '').trim();
+
+        if (alterEgoName) {
+            return alterEgoName;
+        }
+    }
+
+    return getNativePersonaName(personaId);
+}
+
+function getNativePersonaAvatarKey(personaId = getMacroPersonaId()) {
+    return normalizePersonaId(personaId) || String(user_avatar || '').trim();
+}
+
+function getPersonaAvatarThumbnailUrl(avatarKey, { bustCache = false } = {}) {
+    const key = String(avatarKey || '').trim();
+
+    if (!key || key === 'none') {
+        return '';
+    }
+
+    const ctx = getContext();
+
+    if (typeof ctx?.getThumbnailUrl === 'function') {
+        return ctx.getThumbnailUrl('persona', key, bustCache);
+    }
+
+    return `/thumbnail?type=persona&file=${encodeURIComponent(key)}${bustCache ? `&t=${Date.now()}` : ''}`;
+}
+
+function getSelectablePersonaAvatars() {
+    const powerUser = getPowerUserSettings();
+    const personaMap = powerUser?.personas && typeof powerUser.personas === 'object' ? powerUser.personas : {};
+    const signature = Object.keys(personaMap)
+        .sort()
+        .map((avatar) => `${String(avatar || '').trim()}\u001f${String(personaMap[avatar] || '').trim()}`)
+        .join('\u001e');
+
+    if (selectablePersonaAvatarsCache.signature === signature) {
+        return selectablePersonaAvatarsCache.entries;
+    }
+
+    selectablePersonaAvatarsCache.signature = signature;
+    selectablePersonaAvatarsCache.entries = Object.keys(personaMap)
+        .map((avatar) => ({
+            avatar: String(avatar || '').trim(),
+            name: String(personaMap[avatar] || avatar || '').trim(),
+        }))
+        .filter((entry) => entry.avatar && entry.avatar !== 'none')
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+    return selectablePersonaAvatarsCache.entries;
+}
+
+function invalidateSelectablePersonaAvatarsCache() {
+    selectablePersonaAvatarsCache.signature = '';
+    selectablePersonaAvatarsCache.entries = [];
+}
+
+function readImageFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        if (!(file instanceof File)) {
+            reject(new Error('No image file selected.'));
+            return;
+        }
+
+        const fileType = String(file.type || '').toLowerCase();
+
+        if (fileType && !fileType.startsWith('image/')) {
+            reject(new Error('Select an image file.'));
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onerror = () => reject(reader.error || new Error('Failed to read image file.'));
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.readAsDataURL(file);
+    });
+}
+
+
+function normalizeLocalImagePath(path) {
+    return String(path ?? '').trim();
+}
+
+function probeImageReference(path) {
+    const normalizedPath = normalizeLocalImagePath(path);
+
+    return new Promise((resolve, reject) => {
+        if (!normalizedPath) {
+            reject(new Error('Enter a local file path first.'));
+            return;
+        }
+
+        const image = new Image();
+        const timeout = setTimeout(() => {
+            image.onload = null;
+            image.onerror = null;
+            reject(new Error('Image verification timed out.'));
+        }, 5000);
+
+        image.onload = () => {
+            clearTimeout(timeout);
+            resolve(true);
+        };
+
+        image.onerror = () => {
+            clearTimeout(timeout);
+            reject(new Error('Could not load image from that path. Use a SillyTavern-served path such as files/example.png, assets/character/example.png, or another reachable relative path.'));
+        };
+
+        const separator = normalizedPath.includes('?') ? '&' : '?';
+        image.src = `${normalizedPath}${separator}dsf_probe=${Date.now()}`;
+    });
+}
+
+function shouldApplyPersonaAlterEgoIdentity(personaId = getActivePersonaId()) {
+    const normalizedPersonaId = normalizePersonaId(personaId);
+
+    if (!normalizedPersonaId) {
+        return false;
+    }
+
+    const state = readPersonaState(normalizedPersonaId);
+    return Boolean(state.swapEnabled && state.activeAlterEgoId);
+}
+
+function resolvePersonaAlterEgoAvatarUrl(alterEgo, personaId = getMacroPersonaId(), { bustCache = false } = {}) {
+    const normalizedPersonaId = normalizePersonaId(personaId);
+    const normalized = normalizePersonaAlterEgo(alterEgo, {
+        fallbackName: getNativePersonaName(normalizedPersonaId),
+        fallbackAvatarKey: getNativePersonaAvatarKey(normalizedPersonaId),
+    });
+
+    switch (normalized.avatarMode) {
+        case ALTER_EGO_AVATAR_MODE.SAME_AVATAR_DIRECTORY:
+            return getPersonaAvatarThumbnailUrl(normalized.avatarKey, { bustCache });
+
+        case ALTER_EGO_AVATAR_MODE.IMAGE_FILE:
+            return normalized.avatarDataUrl || getPersonaAvatarThumbnailUrl(getNativePersonaAvatarKey(normalizedPersonaId), { bustCache });
+
+        case ALTER_EGO_AVATAR_MODE.LOCAL_FILE:
+            return normalized.avatarLocalPath || getPersonaAvatarThumbnailUrl(getNativePersonaAvatarKey(normalizedPersonaId), { bustCache });
+
+        case ALTER_EGO_AVATAR_MODE.URL:
+            return normalized.avatarUrl || getPersonaAvatarThumbnailUrl(getNativePersonaAvatarKey(normalizedPersonaId), { bustCache });
+
+        case ALTER_EGO_AVATAR_MODE.DATA_URL:
+            return normalized.avatarDataUrl || getPersonaAvatarThumbnailUrl(getNativePersonaAvatarKey(normalizedPersonaId), { bustCache });
+
+        case ALTER_EGO_AVATAR_MODE.INHERIT:
+        default:
+            return getPersonaAvatarThumbnailUrl(getNativePersonaAvatarKey(normalizedPersonaId), { bustCache });
+    }
+}
+
+function getActivePersonaAlterEgoIdentity(personaId = getMacroPersonaId()) {
+    const normalizedPersonaId = normalizePersonaId(personaId);
+    const alterEgo = getActiveAlterEgoForPersona(normalizedPersonaId);
+
+    if (!alterEgo || !shouldApplyPersonaAlterEgoIdentity(normalizedPersonaId)) {
+        return {
+            alterEgoId: ALTER_EGO_BASE_ID,
+            name: getNativePersonaName(normalizedPersonaId),
+            avatarUrl: getPersonaAvatarThumbnailUrl(getNativePersonaAvatarKey(normalizedPersonaId)),
+            avatarKey: getNativePersonaAvatarKey(normalizedPersonaId),
+            avatarMode: ALTER_EGO_AVATAR_MODE.INHERIT,
+            isAlterEgo: false,
+        };
+    }
+
+    return {
+        alterEgoId: alterEgo.id,
+        name: String(alterEgo.name || getNativePersonaName(normalizedPersonaId)).trim() || getNativePersonaName(normalizedPersonaId),
+        avatarUrl: resolvePersonaAlterEgoAvatarUrl(alterEgo, normalizedPersonaId),
+        avatarKey: String(alterEgo.avatarKey || '').trim(),
+        avatarMode: alterEgo.avatarMode,
+        isAlterEgo: alterEgo.id !== ALTER_EGO_BASE_ID,
+    };
 }
 
 function getPersonaDescriptionObject(personaId = getActivePersonaId()) {
@@ -1066,14 +1409,18 @@ function deletePersonaExtensionStateRecord(personaId) {
 }
 
 // ============================================================================
-// Section 5. Field and State Model
+
+// Section 5. Field, Alter Ego, and State Model
 // ============================================================================
 // Purpose:
 // - Own normalization of saved extension data into predictable runtime objects.
+// - Keep legacy flat state.fields compatibility.
+// - Introduce first-class Character Alter Egos as named field containers.
+// - Never mutate SillyTavern's canonical character avatar/name as alter-ego data.
 // ============================================================================
 
 // -----------------------------------------------------------------------------
-// Field and State Model - Field Normalization
+// Field, Alter Ego, and State Model - Field Normalization
 // -----------------------------------------------------------------------------
 
 function createDefaultFields() {
@@ -1129,38 +1476,46 @@ function createDefaultFields() {
     ];
 }
 
-function createOutOfBoxState() {
+function createOutOfBoxState(characterId = getActiveCharacterId()) {
+    const fields = createDefaultFields();
+
     return normalizeState({
         swapEnabled: false,
         initializedDefaults: true,
-        fields: createDefaultFields(),
-    });
+        activeAlterEgoId: ALTER_EGO_BASE_ID,
+        alterEgos: [createBaseAlterEgo({ characterId, fields })],
+        fields,
+    }, { characterId });
 }
 
-function createOutOfBoxPersonaState() {
+function createOutOfBoxPersonaState(personaId = getActivePersonaId()) {
+    const fields = createDefaultFields().map(normalizePersonaField);
+
     return normalizePersonaState({
         swapEnabled: false,
         initializedDefaults: true,
-        fields: createDefaultFields(),
-    });
+        activeAlterEgoId: ALTER_EGO_BASE_ID,
+        alterEgos: [createBasePersonaAlterEgo({ personaId, fields })],
+        fields,
+    }, { personaId });
 }
 
 function createEmptyFieldsState(characterId = getActiveCharacterId()) {
     const state = readState(characterId);
 
     state.initializedDefaults = true;
-    state.fields = [];
+    setActiveAlterEgoFields(state, []);
 
-    return normalizeState(state);
+    return normalizeState(state, { characterId });
 }
 
 function createEmptyPersonaFieldsState(personaId = getActivePersonaId()) {
     const state = readPersonaState(personaId);
 
     state.initializedDefaults = true;
-    state.fields = [];
+    setActivePersonaAlterEgoFields(state, []);
 
-    return normalizePersonaState(state);
+    return normalizePersonaState(state, { personaId });
 }
 
 function normalizeKeywordMode(rawMode) {
@@ -1247,43 +1602,471 @@ function normalizePersonaField(field = {}) {
 }
 
 // -----------------------------------------------------------------------------
-// Field and State Model - State Normalization
+// Field, Alter Ego, and State Model - Alter Ego Normalization
 // -----------------------------------------------------------------------------
 
-function normalizeState(rawState = {}, options = {}) {
-    const source = rawState && typeof rawState === 'object' ? rawState : {};
-    const hasSavedFields = Array.isArray(source.fields);
-    const initializedDefaults = Boolean(source.initializedDefaults);
-    const includeTriggerActions = shouldIncludeTriggerActions(options);
+function normalizeAlterEgoAvatarMode(rawMode) {
+    const mode = String(rawMode ?? '').trim();
 
-    let fields = hasSavedFields
-        ? source.fields.map((field) => normalizeField(field, { ...options, includeTriggerActions }))
-        : createDefaultFields().map((field) => normalizeField(field, { ...options, includeTriggerActions }));
-
-    if (!initializedDefaults && fields.length === 0) {
-        fields = createDefaultFields().map((field) => normalizeField(field, { ...options, includeTriggerActions }));
+    if (mode === 'character_avatar_key') {
+        return ALTER_EGO_AVATAR_MODE.SAME_AVATAR_DIRECTORY;
     }
 
+    if (Object.values(ALTER_EGO_AVATAR_MODE).includes(mode)) {
+        return mode;
+    }
+
+    return ALTER_EGO_AVATAR_MODE.INHERIT;
+}
+
+function normalizeAlterEgoSwapMode(rawMode) {
+    const mode = String(rawMode ?? '').trim();
+
+    if (Object.values(ALTER_EGO_SWAP_MODE).includes(mode)) {
+        return mode;
+    }
+
+    return ALTER_EGO_SWAP_MODE.MANUAL;
+}
+
+function createBaseAlterEgo({ characterId = getActiveCharacterId(), fields = createDefaultFields() } = {}) {
+    return normalizeAlterEgo({
+        id: ALTER_EGO_BASE_ID,
+        name: getNativeCharacterName(characterId) || ALTER_EGO_DEFAULT_NAME,
+        avatarMode: ALTER_EGO_AVATAR_MODE.INHERIT,
+        avatarKey: '',
+        avatarUrl: '',
+        avatarDataUrl: '',
+        avatarFileName: '',
+        avatarLocalPath: '',
+        swapMode: ALTER_EGO_SWAP_MODE.MANUAL,
+        changeConditions: '',
+        changeKeywordMode: KEYWORD_MODE.ANY,
+        triggerSources: [...DEFAULT_TRIGGER_SOURCES],
+        fields,
+    }, { fallbackName: getNativeCharacterName(characterId), fallbackAvatarKey: getNativeCharacterAvatarKey(characterId) });
+}
+
+function createBlankAlterEgo(existingAlterEgos = [], { characterId = getActiveCharacterId(), name = '', fromAlterEgo = null } = {}) {
+    const baseName = String(name || 'New Alter Ego').trim() || 'New Alter Ego';
+    const existingNames = new Set(existingAlterEgos.map((alterEgo) => String(alterEgo.name || '').trim().toLowerCase()));
+    let uniqueName = baseName;
+    let counter = 2;
+
+    while (existingNames.has(uniqueName.toLowerCase())) {
+        uniqueName = `${baseName} ${counter}`;
+        counter += 1;
+    }
+
+    const source = fromAlterEgo ? normalizeAlterEgo(fromAlterEgo, {
+        fallbackName: getNativeCharacterName(characterId),
+        fallbackAvatarKey: getNativeCharacterAvatarKey(characterId),
+    }) : null;
+
+    return normalizeAlterEgo({
+        id: makeId(),
+        name: uniqueName,
+        avatarMode: source?.avatarMode ?? ALTER_EGO_AVATAR_MODE.INHERIT,
+        avatarKey: source?.avatarKey ?? '',
+        avatarUrl: source?.avatarUrl ?? '',
+        avatarDataUrl: source?.avatarDataUrl ?? '',
+        avatarFileName: source?.avatarFileName ?? '',
+        avatarLocalPath: source?.avatarLocalPath ?? '',
+        swapMode: source?.swapMode ?? ALTER_EGO_SWAP_MODE.MANUAL,
+        changeConditions: source?.changeConditions ?? '',
+        changeKeywordMode: source?.changeKeywordMode ?? KEYWORD_MODE.ANY,
+        triggerSources: source?.triggerSources ?? [...DEFAULT_TRIGGER_SOURCES],
+        fields: source
+            ? source.fields.map((field) => normalizeCharacterField({
+                ...field,
+                id: makeId(),
+                triggerActionPhase: TRIGGER_ACTION_PHASE.IDLE,
+                triggerActionGenerationId: 0,
+                triggerActionEnabledByGeneration: false,
+            }))
+            : createDefaultFields(),
+    }, { fallbackName: getNativeCharacterName(characterId), fallbackAvatarKey: getNativeCharacterAvatarKey(characterId) });
+}
+
+function normalizeAlterEgo(alterEgo = {}, { fallbackName = ALTER_EGO_DEFAULT_NAME, fallbackAvatarKey = '' } = {}) {
+    const rawId = String(alterEgo.id ?? '').trim();
+    const id = rawId || makeId();
+    const name = String(alterEgo.name ?? alterEgo.displayName ?? fallbackName ?? ALTER_EGO_DEFAULT_NAME).trim() || ALTER_EGO_DEFAULT_NAME;
+    const avatarMode = normalizeAlterEgoAvatarMode(alterEgo.avatarMode);
+    const avatarKey = String(alterEgo.avatarKey ?? alterEgo.avatar ?? '').trim();
+    const avatarUrl = String(alterEgo.avatarUrl ?? alterEgo.imageUrl ?? '').trim();
+    const avatarDataUrl = String(alterEgo.avatarDataUrl ?? alterEgo.dataUrl ?? '').trim();
+    const avatarFileName = String(alterEgo.avatarFileName ?? alterEgo.imageFileName ?? alterEgo.fileName ?? '').trim();
+    const avatarLocalPath = normalizeLocalImagePath(alterEgo.avatarLocalPath ?? alterEgo.localFilePath ?? alterEgo.localPath ?? '');
+    const fields = Array.isArray(alterEgo.fields)
+        ? alterEgo.fields.map(normalizeCharacterField)
+        : createDefaultFields();
+
     return {
-        ...clone(DEFAULT_STATE),
-        swapEnabled: Boolean(source.swapEnabled),
-        initializedDefaults: true,
+        id,
+        name,
+        avatarMode,
+        avatarKey: avatarMode === ALTER_EGO_AVATAR_MODE.SAME_AVATAR_DIRECTORY ? avatarKey || fallbackAvatarKey : avatarKey,
+        avatarUrl,
+        avatarDataUrl,
+        avatarFileName,
+        avatarLocalPath,
+        swapMode: normalizeAlterEgoSwapMode(alterEgo.swapMode),
+        changeConditions: String(alterEgo.changeConditions ?? '').trim(),
+        changeKeywordMode: normalizeKeywordMode(alterEgo.changeKeywordMode ?? alterEgo.keywordMode ?? KEYWORD_MODE.ANY),
+        triggerSources: normalizeTriggerSources(alterEgo.triggerSources ?? alterEgo.changeTriggerSources),
         fields,
     };
 }
 
-function normalizeCharacterState(rawState = {}) {
+function normalizeAlterEgos(rawAlterEgos, { characterId = getActiveCharacterId(), legacyFields = null } = {}) {
+    const fallbackName = getNativeCharacterName(characterId);
+    const fallbackAvatarKey = getNativeCharacterAvatarKey(characterId);
+    const sourceAlterEgos = Array.isArray(rawAlterEgos) ? rawAlterEgos : [];
+    let alterEgos = sourceAlterEgos.map((alterEgo) => normalizeAlterEgo(alterEgo, { fallbackName, fallbackAvatarKey }));
+
+    if (!alterEgos.some((alterEgo) => alterEgo.id === ALTER_EGO_BASE_ID)) {
+        alterEgos.unshift(createBaseAlterEgo({
+            characterId,
+            fields: Array.isArray(legacyFields) ? legacyFields.map(normalizeCharacterField) : createDefaultFields(),
+        }));
+    }
+
+    const seenIds = new Set();
+    alterEgos = alterEgos.map((alterEgo) => {
+        if (!seenIds.has(alterEgo.id)) {
+            seenIds.add(alterEgo.id);
+            return alterEgo;
+        }
+
+        const next = { ...alterEgo, id: makeId() };
+        seenIds.add(next.id);
+        return next;
+    });
+
+    return alterEgos;
+}
+
+function getActiveAlterEgo(state) {
+    if (!state || typeof state !== 'object') {
+        return null;
+    }
+
+    const alterEgos = Array.isArray(state.alterEgos) ? state.alterEgos : [];
+    return alterEgos.find((alterEgo) => alterEgo.id === state.activeAlterEgoId) ?? alterEgos[0] ?? null;
+}
+
+function getActiveAlterEgoForCharacter(characterId = getActiveCharacterId()) {
+    if (characterId === undefined || characterId === null || characterId === '') {
+        return null;
+    }
+
+    return getActiveAlterEgo(readState(characterId));
+}
+
+function createBasePersonaAlterEgo({ personaId = getActivePersonaId(), fields = createDefaultFields().map(normalizePersonaField) } = {}) {
+    const normalizedPersonaId = normalizePersonaId(personaId);
+
+    return normalizePersonaAlterEgo({
+        id: ALTER_EGO_BASE_ID,
+        name: getNativePersonaName(normalizedPersonaId) || ALTER_EGO_DEFAULT_NAME,
+        avatarMode: ALTER_EGO_AVATAR_MODE.INHERIT,
+        avatarKey: '',
+        avatarUrl: '',
+        avatarDataUrl: '',
+        avatarFileName: '',
+        avatarLocalPath: '',
+        swapMode: ALTER_EGO_SWAP_MODE.MANUAL,
+        changeConditions: '',
+        changeKeywordMode: KEYWORD_MODE.ANY,
+        triggerSources: [...DEFAULT_TRIGGER_SOURCES],
+        fields,
+    }, { fallbackName: getNativePersonaName(normalizedPersonaId), fallbackAvatarKey: getNativePersonaAvatarKey(normalizedPersonaId) });
+}
+
+function createBlankPersonaAlterEgo(existingAlterEgos = [], { personaId = getActivePersonaId(), name = '', fromAlterEgo = null } = {}) {
+    const baseName = String(name || 'New Alter Ego').trim() || 'New Alter Ego';
+    const existingNames = new Set(existingAlterEgos.map((alterEgo) => String(alterEgo.name || '').trim().toLowerCase()));
+    let uniqueName = baseName;
+    let counter = 2;
+
+    while (existingNames.has(uniqueName.toLowerCase())) {
+        uniqueName = `${baseName} ${counter}`;
+        counter += 1;
+    }
+
+    const normalizedPersonaId = normalizePersonaId(personaId);
+    const source = fromAlterEgo ? normalizePersonaAlterEgo(fromAlterEgo, {
+        fallbackName: getNativePersonaName(normalizedPersonaId),
+        fallbackAvatarKey: getNativePersonaAvatarKey(normalizedPersonaId),
+    }) : null;
+
+    return normalizePersonaAlterEgo({
+        id: makeId(),
+        name: uniqueName,
+        avatarMode: source?.avatarMode ?? ALTER_EGO_AVATAR_MODE.INHERIT,
+        avatarKey: source?.avatarKey ?? '',
+        avatarUrl: source?.avatarUrl ?? '',
+        avatarDataUrl: source?.avatarDataUrl ?? '',
+        avatarFileName: source?.avatarFileName ?? '',
+        avatarLocalPath: source?.avatarLocalPath ?? '',
+        swapMode: source?.swapMode ?? ALTER_EGO_SWAP_MODE.MANUAL,
+        changeConditions: source?.changeConditions ?? '',
+        changeKeywordMode: source?.changeKeywordMode ?? KEYWORD_MODE.ANY,
+        triggerSources: source?.triggerSources ?? [...DEFAULT_TRIGGER_SOURCES],
+        fields: source
+            ? source.fields.map((field) => normalizePersonaField({ ...field, id: makeId() }))
+            : createDefaultFields().map(normalizePersonaField),
+    }, { fallbackName: getNativePersonaName(normalizedPersonaId), fallbackAvatarKey: getNativePersonaAvatarKey(normalizedPersonaId) });
+}
+
+function normalizePersonaAlterEgo(alterEgo = {}, { fallbackName = ALTER_EGO_DEFAULT_NAME, fallbackAvatarKey = '' } = {}) {
+    const rawId = String(alterEgo.id ?? '').trim();
+    const id = rawId || makeId();
+    const name = String(alterEgo.name ?? alterEgo.displayName ?? fallbackName ?? ALTER_EGO_DEFAULT_NAME).trim() || ALTER_EGO_DEFAULT_NAME;
+    const avatarMode = normalizeAlterEgoAvatarMode(alterEgo.avatarMode);
+    const avatarKey = String(alterEgo.avatarKey ?? alterEgo.avatar ?? '').trim();
+    const avatarUrl = String(alterEgo.avatarUrl ?? alterEgo.imageUrl ?? '').trim();
+    const avatarDataUrl = String(alterEgo.avatarDataUrl ?? alterEgo.dataUrl ?? '').trim();
+    const avatarFileName = String(alterEgo.avatarFileName ?? alterEgo.imageFileName ?? alterEgo.fileName ?? '').trim();
+    const avatarLocalPath = normalizeLocalImagePath(alterEgo.avatarLocalPath ?? alterEgo.localFilePath ?? alterEgo.localPath ?? '');
+    const fields = Array.isArray(alterEgo.fields)
+        ? alterEgo.fields.map(normalizePersonaField)
+        : createDefaultFields().map(normalizePersonaField);
+
+    return {
+        id,
+        name,
+        avatarMode,
+        avatarKey: avatarMode === ALTER_EGO_AVATAR_MODE.SAME_AVATAR_DIRECTORY ? avatarKey || fallbackAvatarKey : avatarKey,
+        avatarUrl,
+        avatarDataUrl,
+        avatarFileName,
+        avatarLocalPath,
+        swapMode: normalizeAlterEgoSwapMode(alterEgo.swapMode),
+        changeConditions: String(alterEgo.changeConditions ?? '').trim(),
+        changeKeywordMode: normalizeKeywordMode(alterEgo.changeKeywordMode ?? alterEgo.keywordMode ?? KEYWORD_MODE.ANY),
+        triggerSources: normalizeTriggerSources(alterEgo.triggerSources ?? alterEgo.changeTriggerSources),
+        fields,
+    };
+}
+
+function normalizePersonaAlterEgos(rawAlterEgos, { personaId = getActivePersonaId(), legacyFields = null } = {}) {
+    const normalizedPersonaId = normalizePersonaId(personaId);
+    const fallbackName = getNativePersonaName(normalizedPersonaId);
+    const fallbackAvatarKey = getNativePersonaAvatarKey(normalizedPersonaId);
+    const sourceAlterEgos = Array.isArray(rawAlterEgos) ? rawAlterEgos : [];
+    let alterEgos = sourceAlterEgos.map((alterEgo) => normalizePersonaAlterEgo(alterEgo, { fallbackName, fallbackAvatarKey }));
+
+    if (!alterEgos.some((alterEgo) => alterEgo.id === ALTER_EGO_BASE_ID)) {
+        alterEgos.unshift(createBasePersonaAlterEgo({
+            personaId: normalizedPersonaId,
+            fields: Array.isArray(legacyFields) ? legacyFields.map(normalizePersonaField) : createDefaultFields().map(normalizePersonaField),
+        }));
+    }
+
+    const seenIds = new Set();
+    alterEgos = alterEgos.map((alterEgo) => {
+        if (!seenIds.has(alterEgo.id)) {
+            seenIds.add(alterEgo.id);
+            return alterEgo;
+        }
+
+        const next = { ...alterEgo, id: makeId() };
+        seenIds.add(next.id);
+        return next;
+    });
+
+    return alterEgos;
+}
+
+function getActiveAlterEgoForPersona(personaId = getActivePersonaId()) {
+    const normalizedPersonaId = normalizePersonaId(personaId);
+
+    if (!normalizedPersonaId) {
+        return null;
+    }
+
+    return getActiveAlterEgo(readPersonaState(normalizedPersonaId));
+}
+
+function getActivePersonaAlterEgoFields(state) {
+    const activeAlterEgo = getActiveAlterEgo(state);
+    return Array.isArray(activeAlterEgo?.fields) ? activeAlterEgo.fields : [];
+}
+
+function setActivePersonaAlterEgoFields(state, fields) {
+    const normalizedFields = Array.isArray(fields) ? fields.map(normalizePersonaField) : [];
+    const activeId = String(state.activeAlterEgoId || ALTER_EGO_BASE_ID);
+    const index = Array.isArray(state.alterEgos)
+        ? state.alterEgos.findIndex((alterEgo) => alterEgo.id === activeId)
+        : -1;
+
+    if (index >= 0) {
+        state.alterEgos[index].fields = normalizedFields;
+    }
+
+    state.fields = normalizedFields;
+}
+
+function deletePersonaAlterEgoById(state, alterEgoId) {
+    const targetId = String(alterEgoId || '').trim();
+
+    if (!targetId || targetId === ALTER_EGO_BASE_ID) {
+        return;
+    }
+
+    state.alterEgos = state.alterEgos.filter((alterEgo) => alterEgo.id !== targetId);
+
+    if (!state.alterEgos.length) {
+        state.alterEgos.push(createBasePersonaAlterEgo());
+    }
+
+    if (state.activeAlterEgoId === targetId) {
+        state.activeAlterEgoId = state.alterEgos[0]?.id ?? ALTER_EGO_BASE_ID;
+    }
+
+    state.fields = getActivePersonaAlterEgoFields(state);
+}
+
+function getActiveAlterEgoFields(state) {
+    const activeAlterEgo = getActiveAlterEgo(state);
+    return Array.isArray(activeAlterEgo?.fields) ? activeAlterEgo.fields : [];
+}
+
+function setActiveAlterEgoFields(state, fields) {
+    const normalizedFields = Array.isArray(fields) ? fields.map(normalizeCharacterField) : [];
+    const activeId = String(state.activeAlterEgoId || ALTER_EGO_BASE_ID);
+    const index = Array.isArray(state.alterEgos)
+        ? state.alterEgos.findIndex((alterEgo) => alterEgo.id === activeId)
+        : -1;
+
+    if (index >= 0) {
+        state.alterEgos[index].fields = normalizedFields;
+    }
+
+    state.fields = normalizedFields;
+}
+
+function deleteAlterEgoById(state, alterEgoId) {
+    const targetId = String(alterEgoId || '').trim();
+
+    if (!targetId || targetId === ALTER_EGO_BASE_ID) {
+        return;
+    }
+
+    state.alterEgos = state.alterEgos.filter((alterEgo) => alterEgo.id !== targetId);
+
+    if (!state.alterEgos.length) {
+        state.alterEgos.push(createBaseAlterEgo());
+    }
+
+    if (state.activeAlterEgoId === targetId) {
+        state.activeAlterEgoId = state.alterEgos[0]?.id ?? ALTER_EGO_BASE_ID;
+    }
+
+    state.fields = getActiveAlterEgoFields(state);
+}
+
+function getUniqueAlterEgoName(existingAlterEgos, requestedName) {
+    const baseName = String(requestedName || 'Imported Alter Ego').trim() || 'Imported Alter Ego';
+    const existingNames = new Set(existingAlterEgos.map((alterEgo) => String(alterEgo.name || '').trim().toLowerCase()));
+
+    if (!existingNames.has(baseName.toLowerCase())) {
+        return baseName;
+    }
+
+    let counter = 2;
+
+    while (existingNames.has(`${baseName} ${counter}`.toLowerCase())) {
+        counter += 1;
+    }
+
+    return `${baseName} ${counter}`;
+}
+
+// -----------------------------------------------------------------------------
+// Field, Alter Ego, and State Model - State Normalization
+// -----------------------------------------------------------------------------
+
+function normalizeState(rawState = {}, options = {}) {
+    const source = rawState && typeof rawState === 'object' ? rawState : {};
+    const includeTriggerActions = shouldIncludeTriggerActions(options);
+    const characterId = options.characterId ?? getActiveCharacterId();
+    const hasSavedFields = Array.isArray(source.fields);
+    const legacyFields = hasSavedFields
+        ? source.fields.map((field) => normalizeField(field, { ...options, includeTriggerActions }))
+        : createDefaultFields().map((field) => normalizeField(field, { ...options, includeTriggerActions }));
+
+    const alterEgos = normalizeAlterEgos(source.alterEgos, { characterId, legacyFields });
+    const requestedActiveAlterEgoId = String(source.activeAlterEgoId || '').trim();
+    const activeAlterEgoId = alterEgos.some((alterEgo) => alterEgo.id === requestedActiveAlterEgoId)
+        ? requestedActiveAlterEgoId
+        : alterEgos[0]?.id ?? ALTER_EGO_BASE_ID;
+
+    const normalizedState = {
+        ...clone(DEFAULT_STATE),
+        swapEnabled: Boolean(source.swapEnabled),
+        initializedDefaults: true,
+        activeAlterEgoId,
+        alterEgos,
+        fields: [],
+    };
+
+    // Backward-compatible mutator bridge: if old/current UI code mutates
+    // state.fields, treat those fields as the active alter ego's field set.
+    if (Array.isArray(source.fields)) {
+        setActiveAlterEgoFields(normalizedState, source.fields.map((field) => normalizeField(field, { ...options, includeTriggerActions })));
+    } else {
+        normalizedState.fields = getActiveAlterEgoFields(normalizedState);
+    }
+
+    return normalizedState;
+}
+
+function normalizeCharacterState(rawState = {}, options = {}) {
     return normalizeState(rawState, {
         targetScope: TARGET_SCOPE.CHARACTER,
         includeTriggerActions: true,
+        characterId: options.characterId ?? getActiveCharacterId(),
     });
 }
 
-function normalizePersonaState(rawState = {}) {
-    return normalizeState(rawState, {
-        targetScope: TARGET_SCOPE.PERSONA,
-        includeTriggerActions: false,
-    });
+function normalizePersonaState(rawState = {}, options = {}) {
+    const source = rawState && typeof rawState === 'object' ? rawState : {};
+    const personaId = options.personaId ?? getActivePersonaId();
+    const hasSavedFields = Array.isArray(source.fields);
+    const initializedDefaults = Boolean(source.initializedDefaults);
+
+    let legacyFields = hasSavedFields
+        ? source.fields.map(normalizePersonaField)
+        : createDefaultFields().map(normalizePersonaField);
+
+    if (!initializedDefaults && legacyFields.length === 0) {
+        legacyFields = createDefaultFields().map(normalizePersonaField);
+    }
+
+    const alterEgos = normalizePersonaAlterEgos(source.alterEgos, { personaId, legacyFields });
+    const requestedActiveAlterEgoId = String(source.activeAlterEgoId || '').trim();
+    const activeAlterEgoId = alterEgos.some((alterEgo) => alterEgo.id === requestedActiveAlterEgoId)
+        ? requestedActiveAlterEgoId
+        : alterEgos[0]?.id ?? ALTER_EGO_BASE_ID;
+
+    const normalizedState = {
+        swapEnabled: Boolean(source.swapEnabled),
+        initializedDefaults: true,
+        activeAlterEgoId,
+        alterEgos,
+        fields: [],
+    };
+
+    if (Array.isArray(source.fields)) {
+        setActivePersonaAlterEgoFields(normalizedState, source.fields.map(normalizePersonaField));
+    } else {
+        normalizedState.fields = getActivePersonaAlterEgoFields(normalizedState);
+    }
+
+    return normalizedState;
 }
 
 function findField(state, fieldId) {
@@ -1349,7 +2132,7 @@ function prepareImportedCharacterFields(fields, existingFields = []) {
 }
 
 // -----------------------------------------------------------------------------
-// Field and State Model - Clean Import / Export Conversion
+// Field, Alter Ego, and State Model - Clean Import / Export Conversion
 // -----------------------------------------------------------------------------
 
 function exportFieldForJson(field, index = 0, options = {}) {
@@ -1444,8 +2227,53 @@ function importPersonaFieldFromJson(field = {}) {
     });
 }
 
+function exportAlterEgoForJson(alterEgo, index = 0) {
+    const normalized = normalizeAlterEgo(alterEgo);
+
+    return {
+        order: index + 1,
+        id: normalized.id,
+        name: normalized.name,
+        avatarMode: normalized.avatarMode,
+        avatarKey: normalized.avatarKey,
+        avatarUrl: normalized.avatarUrl,
+        avatarDataUrl: normalized.avatarDataUrl,
+        avatarFileName: normalized.avatarFileName,
+        avatarLocalPath: normalized.avatarLocalPath,
+        swapMode: normalized.swapMode,
+        changeConditions: splitKeywords(normalized.changeConditions),
+        changeKeywordMode: normalized.changeKeywordMode,
+        triggerSources: normalized.triggerSources,
+        fields: normalized.fields.map(exportCharacterFieldForJson),
+    };
+}
+
+function importAlterEgoFromJson(alterEgo = {}, existingAlterEgos = []) {
+    const importedFields = Array.isArray(alterEgo.fields)
+        ? alterEgo.fields.map(importCharacterFieldFromJson)
+        : [];
+
+    return normalizeAlterEgo({
+        id: makeId(),
+        name: getUniqueAlterEgoName(existingAlterEgos, alterEgo.name),
+        avatarMode: alterEgo.avatarMode,
+        avatarKey: alterEgo.avatarKey,
+        avatarUrl: alterEgo.avatarUrl,
+        avatarDataUrl: alterEgo.avatarDataUrl,
+        avatarFileName: alterEgo.avatarFileName,
+        avatarLocalPath: alterEgo.avatarLocalPath,
+        swapMode: alterEgo.swapMode,
+        changeKeywordMode: alterEgo.changeKeywordMode ?? alterEgo.keywordMode,
+        triggerSources: alterEgo.triggerSources ?? alterEgo.changeTriggerSources,
+        changeConditions: Array.isArray(alterEgo.changeConditions)
+            ? alterEgo.changeConditions.map((keyword) => String(keyword ?? '')).join('\n')
+            : String(alterEgo.changeConditions ?? ''),
+        fields: importedFields,
+    });
+}
+
 // -----------------------------------------------------------------------------
-// Field and State Model - State Status Checks
+// Field, Alter Ego, and State Model - State Status Checks
 // -----------------------------------------------------------------------------
 
 function areFieldsRemovedForCharacter(characterId) {
@@ -1517,15 +2345,64 @@ function areFieldsOutOfBox(fields, options = {}) {
     });
 }
 
+function areAlterEgosOutOfBox(alterEgos, options = {}) {
+    const normalized = normalizeAlterEgos(alterEgos);
+
+    if (normalized.length !== 1) {
+        return false;
+    }
+
+    const base = normalized[0];
+
+    return (
+        base.id === ALTER_EGO_BASE_ID &&
+        base.avatarMode === ALTER_EGO_AVATAR_MODE.INHERIT &&
+        base.avatarKey === '' &&
+        base.avatarUrl === '' &&
+        base.avatarDataUrl === '' &&
+        base.avatarFileName === '' &&
+        base.avatarLocalPath === '' &&
+        base.swapMode === ALTER_EGO_SWAP_MODE.MANUAL &&
+        base.changeConditions === '' &&
+        base.changeKeywordMode === KEYWORD_MODE.ANY &&
+        JSON.stringify(base.triggerSources) === JSON.stringify(DEFAULT_TRIGGER_SOURCES) &&
+        areFieldsOutOfBox(base.fields, options)
+    );
+}
+
 function isStateOutOfBox(state) {
     const normalized = normalizeCharacterState(state);
 
     return (
         normalized.swapEnabled === false &&
-        areFieldsOutOfBox(normalized.fields, {
+        normalized.activeAlterEgoId === ALTER_EGO_BASE_ID &&
+        areAlterEgosOutOfBox(normalized.alterEgos, {
             targetScope: TARGET_SCOPE.CHARACTER,
             includeTriggerActions: true,
         })
+    );
+}
+
+function arePersonaAlterEgosOutOfBox(alterEgos, options = {}) {
+    const normalized = normalizePersonaAlterEgos(alterEgos);
+
+    if (normalized.length !== 1) {
+        return false;
+    }
+
+    const base = normalized[0];
+
+    return (
+        base.id === ALTER_EGO_BASE_ID &&
+        base.avatarMode === ALTER_EGO_AVATAR_MODE.INHERIT &&
+        base.avatarKey === '' &&
+        base.avatarUrl === '' &&
+        base.avatarDataUrl === '' &&
+        base.avatarFileName === '' &&
+        base.avatarLocalPath === '' &&
+        base.swapMode === ALTER_EGO_SWAP_MODE.MANUAL &&
+        base.changeConditions === '' &&
+        areFieldsOutOfBox(base.fields, options)
     );
 }
 
@@ -1534,7 +2411,8 @@ function isPersonaStateOutOfBox(state) {
 
     return (
         normalized.swapEnabled === false &&
-        areFieldsOutOfBox(normalized.fields, {
+        normalized.activeAlterEgoId === ALTER_EGO_BASE_ID &&
+        arePersonaAlterEgosOutOfBox(normalized.alterEgos, {
             targetScope: TARGET_SCOPE.PERSONA,
             includeTriggerActions: false,
         })
@@ -1578,14 +2456,14 @@ function readState(characterId = getActiveCharacterId()) {
 
     const character = getCharacter(characterId);
     const rawState = character?.data?.extensions?.[MODULE_NAME];
-    const state = normalizeCharacterState(rawState);
+    const state = normalizeCharacterState(rawState, { characterId });
 
     stateCache.set(key, state);
     return clone(state);
 }
 
 function cacheState(characterId, state) {
-    const normalized = normalizeCharacterState(state);
+    const normalized = normalizeCharacterState(state, { characterId });
     stateCache.set(getCacheKey(characterId), normalized);
     return clone(normalized);
 }
@@ -1607,7 +2485,7 @@ async function saveStateNow(characterId, state) {
     }
 
     try {
-        await ctx.writeExtensionField(characterId, MODULE_NAME, normalizeCharacterState(state));
+        await ctx.writeExtensionField(characterId, MODULE_NAME, normalizeCharacterState(state, { characterId }));
     } catch (error) {
         console.error(`[${MODULE_NAME}] Failed to save character extension data:`, error);
         notify('error', 'Failed to save Aspect: Evolutia character fields.');
@@ -1623,7 +2501,13 @@ function scheduleSave(characterId, state) {
     }, 400);
 }
 
-function updateState(mutator, { rerender = false, syncPromptManager = false } = {}) {
+function updateState(mutator, {
+    rerender = false,
+    syncPromptManager = false,
+    applyIdentity = true,
+    deferTokenEstimate = false,
+    deferSettingsActionState = false,
+} = {}) {
     const characterId = getActiveCharacterId();
 
     if (characterId === undefined) {
@@ -1634,8 +2518,13 @@ function updateState(mutator, { rerender = false, syncPromptManager = false } = 
     const state = readState(characterId);
     mutator(state);
 
-    const normalized = normalizeCharacterState(state);
+    const normalized = normalizeCharacterState(state, { characterId });
     scheduleSave(characterId, normalized);
+
+    if (applyIdentity) {
+        applyActiveAlterEgoNameToSillyTavern(characterId);
+        refreshActiveAlterEgoVisualIdentity(characterId);
+    }
 
     if (rerender) {
         renderPanel();
@@ -1647,8 +2536,17 @@ function updateState(mutator, { rerender = false, syncPromptManager = false } = 
         syncPromptManagerForState(normalized);
     }
 
-    updateTokenEstimate();
-    updateSettingsActionState();
+    if (deferTokenEstimate) {
+        scheduleTokenEstimateUpdate();
+    } else {
+        updateTokenEstimate();
+    }
+
+    if (deferSettingsActionState) {
+        scheduleSettingsActionStateUpdate();
+    } else {
+        updateSettingsActionState();
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -1663,14 +2561,14 @@ function readPersonaState(personaId = getActivePersonaId()) {
     }
 
     const rawState = getPersonaExtensionStateRecord(personaId);
-    const state = normalizePersonaState(rawState);
+    const state = normalizePersonaState(rawState, { personaId });
 
     personaStateCache.set(key, state);
     return clone(state);
 }
 
 function cachePersonaState(personaId, state) {
-    const normalized = normalizePersonaState(state);
+    const normalized = normalizePersonaState(state, { personaId });
     personaStateCache.set(getPersonaCacheKey(personaId), normalized);
     return clone(normalized);
 }
@@ -1695,7 +2593,7 @@ async function savePersonaStateNow(personaId, state) {
         return;
     }
 
-    const normalizedState = normalizePersonaState(state);
+    const normalizedState = normalizePersonaState(state, { personaId: normalizedPersonaId });
     const savedToSettings = setPersonaExtensionStateRecord(normalizedPersonaId, normalizedState);
 
     if (!savedToSettings) {
@@ -1752,7 +2650,12 @@ function schedulePersonaSave(personaId, state) {
     }, 400);
 }
 
-function updatePersonaState(mutator, { rerender = false, syncPromptManager = false } = {}) {
+function updatePersonaState(mutator, {
+    rerender = false,
+    syncPromptManager = false,
+    deferTokenEstimate = false,
+    deferSettingsActionState = false,
+} = {}) {
     const personaId = getActivePersonaId();
 
     if (!personaId) {
@@ -1763,7 +2666,7 @@ function updatePersonaState(mutator, { rerender = false, syncPromptManager = fal
     const state = readPersonaState(personaId);
     mutator(state);
 
-    const normalized = normalizePersonaState(state);
+    const normalized = normalizePersonaState(state, { personaId });
     schedulePersonaSave(personaId, normalized);
 
     if (rerender) {
@@ -1776,8 +2679,17 @@ function updatePersonaState(mutator, { rerender = false, syncPromptManager = fal
         syncPromptManagerForPersonaState(normalized);
     }
 
-    updatePersonaTokenEstimate();
-    updateSettingsActionState();
+    if (deferTokenEstimate) {
+        schedulePersonaTokenEstimateUpdate();
+    } else {
+        updatePersonaTokenEstimate();
+    }
+
+    if (deferSettingsActionState) {
+        scheduleSettingsActionStateUpdate();
+    } else {
+        updateSettingsActionState();
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -2144,6 +3056,90 @@ function triggerListMatches(rawTriggers, scanText, keywordMode = KEYWORD_MODE.AL
     }
 
     return loweredTriggers.some((trigger) => scanText.includes(trigger));
+}
+
+function alterEgoSwapTriggersMatch(alterEgo, chatOverride = undefined) {
+    const normalized = normalizeAlterEgo(alterEgo);
+
+    if (!splitKeywords(normalized.changeConditions).length) {
+        return false;
+    }
+
+    const scanText = buildScanText(normalized.triggerSources, chatOverride);
+
+    return triggerListMatches(
+        normalized.changeConditions,
+        scanText,
+        normalized.changeKeywordMode,
+    );
+}
+
+function findTriggeredAlterEgo(state, chatOverride = undefined) {
+    const normalized = normalizeCharacterState(state);
+
+    return normalized.alterEgos.find((alterEgo) => alterEgoSwapTriggersMatch(alterEgo, chatOverride)) ?? null;
+}
+
+function applyTriggeredAlterEgoSwapToState(state, chatOverride = undefined) {
+    const normalized = normalizeCharacterState(state);
+    const triggeredAlterEgo = findTriggeredAlterEgo(normalized, chatOverride);
+
+    if (!triggeredAlterEgo || triggeredAlterEgo.id === normalized.activeAlterEgoId) {
+        return {
+            state: normalized,
+            changed: false,
+        };
+    }
+
+    normalized.activeAlterEgoId = triggeredAlterEgo.id;
+    normalized.fields = triggeredAlterEgo.fields;
+
+    return {
+        state: normalized,
+        changed: true,
+    };
+}
+
+function personaAlterEgoSwapTriggersMatch(alterEgo, chatOverride = undefined) {
+    const normalized = normalizePersonaAlterEgo(alterEgo);
+
+    if (!splitKeywords(normalized.changeConditions).length) {
+        return false;
+    }
+
+    const scanText = buildScanText(normalized.triggerSources, chatOverride);
+
+    return triggerListMatches(
+        normalized.changeConditions,
+        scanText,
+        normalized.changeKeywordMode,
+    );
+}
+
+function findTriggeredPersonaAlterEgo(state, chatOverride = undefined) {
+    const normalized = normalizePersonaState(state);
+
+    return normalized.alterEgos.find((alterEgo) => personaAlterEgoSwapTriggersMatch(alterEgo, chatOverride)) ?? null;
+}
+
+function applyTriggeredPersonaAlterEgoSwapToState(state, chatOverride = undefined) {
+    const normalized = normalizePersonaState(state);
+    const triggeredAlterEgo = findTriggeredPersonaAlterEgo(normalized, chatOverride);
+
+    if (!triggeredAlterEgo || triggeredAlterEgo.id === normalized.activeAlterEgoId) {
+        return {
+            state: normalized,
+            changed: false,
+        };
+    }
+
+    normalized.activeAlterEgoId = triggeredAlterEgo.id;
+    normalized.fields = triggeredAlterEgo.fields;
+
+    return {
+        state: normalized,
+        changed: true,
+    };
 }
 
 function activationTriggersAreSatisfied(field, scanText, options = {}) {
@@ -2551,11 +3547,14 @@ function wrapPersonaDynamicFieldsPrompt(personaId, fieldText) {
 // -----------------------------------------------------------------------------
 
 function prepareReplacementPromptForGeneration(characterId, generationId, chat, { mutate = true } = {}) {
-    const state = readState(characterId);
+    let state = readState(characterId);
 
     if (!state.swapEnabled) {
         return '';
     }
+
+    const alterEgoSwapResult = applyTriggeredAlterEgoSwapToState(state, chat);
+    state = alterEgoSwapResult.state;
 
     const { entries, changed } = buildFieldPromptEntriesForGeneration(state, {
         targetScope: TARGET_SCOPE.CHARACTER,
@@ -2565,8 +3564,13 @@ function prepareReplacementPromptForGeneration(characterId, generationId, chat, 
         mutate,
     });
 
-    if (mutate && changed) {
+    if (mutate && (changed || alterEgoSwapResult.changed)) {
         scheduleSave(characterId, state);
+
+        if (alterEgoSwapResult.changed) {
+            applyActiveAlterEgoNameToSillyTavern(characterId);
+            refreshActiveAlterEgoVisualIdentity(characterId);
+        }
 
         setTimeout(() => {
             renderPanel();
@@ -2621,11 +3625,14 @@ function preparePersonaReplacementPromptForGeneration(personaId, generationId, c
         return '';
     }
 
-    const state = readPersonaState(normalizedPersonaId);
+    let state = readPersonaState(normalizedPersonaId);
 
     if (!state.swapEnabled) {
         return '';
     }
+
+    const alterEgoSwapResult = applyTriggeredPersonaAlterEgoSwapToState(state, chat);
+    state = alterEgoSwapResult.state;
 
     const { entries, changed } = buildFieldPromptEntriesForGeneration(state, {
         targetScope: TARGET_SCOPE.PERSONA,
@@ -2635,8 +3642,13 @@ function preparePersonaReplacementPromptForGeneration(personaId, generationId, c
         mutate,
     });
 
-    if (mutate && changed) {
+    if (mutate && (changed || alterEgoSwapResult.changed)) {
         schedulePersonaSave(normalizedPersonaId, state);
+
+        if (alterEgoSwapResult.changed) {
+            refreshActivePersonaAlterEgoVisualIdentity(normalizedPersonaId);
+            stampLatestUserMessageWithActivePersonaAlterEgo(normalizedPersonaId);
+        }
 
         setTimeout(() => {
             renderPersonaPanel();
@@ -3176,6 +4188,522 @@ function restoreSuppressedDescriptions() {
     }
 }
 
+
+// ============================================================================
+// Section 10A. Character Alter Ego Runtime Identity
+// ============================================================================
+// Purpose:
+// - Apply Alter Ego name/avatar as runtime display identity.
+// - Preserve canonical character card name/avatar fields.
+// - Preserve systems that use character.avatar as a stable key, including
+//   group membership, chat save/load, tags, and Aspect: Vocalia.
+// - Persist generated-message identity through SillyTavern's existing
+//   message.force_avatar display model.
+// ============================================================================
+
+function shouldApplyAlterEgoIdentity(characterId = getActiveCharacterId()) {
+    const state = readState(characterId);
+    return Boolean(state.swapEnabled && state.activeAlterEgoId);
+}
+
+function resolveAlterEgoAvatarUrl(alterEgo, characterId = getMacroCharacterId(), { bustCache = false } = {}) {
+    const normalized = normalizeAlterEgo(alterEgo, {
+        fallbackName: getNativeCharacterName(characterId),
+        fallbackAvatarKey: getNativeCharacterAvatarKey(characterId),
+    });
+
+    switch (normalized.avatarMode) {
+        case ALTER_EGO_AVATAR_MODE.SAME_AVATAR_DIRECTORY:
+            return getCharacterAvatarThumbnailUrl(normalized.avatarKey, { bustCache });
+
+        case ALTER_EGO_AVATAR_MODE.IMAGE_FILE:
+            return normalized.avatarDataUrl || getCharacterAvatarThumbnailUrl(getNativeCharacterAvatarKey(characterId), { bustCache });
+
+        case ALTER_EGO_AVATAR_MODE.LOCAL_FILE:
+            return normalized.avatarLocalPath || getCharacterAvatarThumbnailUrl(getNativeCharacterAvatarKey(characterId), { bustCache });
+
+        case ALTER_EGO_AVATAR_MODE.URL:
+            return normalized.avatarUrl || getCharacterAvatarThumbnailUrl(getNativeCharacterAvatarKey(characterId), { bustCache });
+
+        case ALTER_EGO_AVATAR_MODE.DATA_URL:
+            return normalized.avatarDataUrl || getCharacterAvatarThumbnailUrl(getNativeCharacterAvatarKey(characterId), { bustCache });
+
+        case ALTER_EGO_AVATAR_MODE.INHERIT:
+        default:
+            return getCharacterAvatarThumbnailUrl(getNativeCharacterAvatarKey(characterId), { bustCache });
+    }
+}
+
+function getActiveAlterEgoIdentity(characterId = getMacroCharacterId()) {
+    const alterEgo = getActiveAlterEgoForCharacter(characterId);
+
+    if (!alterEgo || !shouldApplyAlterEgoIdentity(characterId)) {
+        return {
+            alterEgoId: ALTER_EGO_BASE_ID,
+            name: getNativeCharacterName(characterId),
+            avatarUrl: getCharacterAvatarThumbnailUrl(getNativeCharacterAvatarKey(characterId)),
+            avatarKey: getNativeCharacterAvatarKey(characterId),
+            avatarMode: ALTER_EGO_AVATAR_MODE.INHERIT,
+            isAlterEgo: false,
+        };
+    }
+
+    return {
+        alterEgoId: alterEgo.id,
+        name: String(alterEgo.name || getNativeCharacterName(characterId)).trim() || getNativeCharacterName(characterId),
+        avatarUrl: resolveAlterEgoAvatarUrl(alterEgo, characterId),
+        avatarKey: String(alterEgo.avatarKey || '').trim(),
+        avatarMode: alterEgo.avatarMode,
+        isAlterEgo: alterEgo.id !== ALTER_EGO_BASE_ID,
+    };
+}
+
+function applyActiveAlterEgoNameToSillyTavern(characterId = getActiveCharacterId()) {
+    if (characterId === undefined || characterId === null || characterId === '') {
+        return;
+    }
+
+    const identity = getActiveAlterEgoIdentity(characterId);
+
+    if (typeof importedSetCharacterName === 'function') {
+        importedSetCharacterName(identity.name);
+    } else if (typeof getContext()?.setCharacterName === 'function') {
+        getContext().setCharacterName(identity.name);
+    }
+
+    refreshTypingIndicatorAlterEgoName(identity);
+}
+
+function isTypingIndicatorExtensionPresent() {
+    return Boolean(
+        document.getElementById('typing_indicator') ||
+        document.getElementById('typingIndicatorEnabled') ||
+        document.getElementById('typingIndicatorShowIfStreaming') ||
+        document.getElementById('typing_indicator_container')
+    );
+}
+
+function refreshTypingIndicatorAlterEgoName(identity = getActiveAlterEgoIdentity()) {
+    if (!identity?.name || !isTypingIndicatorExtensionPresent()) {
+        return;
+    }
+
+    const indicator = document.getElementById('typing_indicator');
+
+    if (!indicator) {
+        return;
+    }
+
+    const nextText = `${identity.name} is typing...`;
+    const childNodes = Array.from(indicator.childNodes);
+    const textNode = childNodes.find((node) =>
+        node.nodeType === Node.TEXT_NODE &&
+        String(node.textContent || '').includes('is typing')
+    );
+
+    if (textNode) {
+        textNode.textContent = nextText;
+        return;
+    }
+
+    const fallbackText = document.createTextNode(nextText);
+    const dotsNode = indicator.querySelector('.svg_dots');
+
+    if (dotsNode?.nextSibling) {
+        indicator.insertBefore(fallbackText, dotsNode.nextSibling);
+    } else {
+        indicator.appendChild(fallbackText);
+    }
+}
+
+function getChatElement() {
+    return $('#chat');
+}
+
+function getMessageElementById(messageId) {
+    return getChatElement().find(`.mes[mesid="${Number(messageId)}"]`);
+}
+
+function isAssistantMessageForCharacter(message, characterId = getActiveCharacterId()) {
+    if (!message || message.is_user || message.is_system) {
+        return false;
+    }
+
+    if (characterId === undefined || characterId === null || characterId === '') {
+        return false;
+    }
+
+    const nativeName = normalizeHeadingKey(getNativeCharacterName(characterId));
+    const effectiveName = normalizeHeadingKey(getActiveAlterEgoIdentity(characterId).name);
+    const messageName = normalizeHeadingKey(message.name);
+
+    return Boolean(messageName && (messageName === nativeName || messageName === effectiveName));
+}
+
+function stampMessageWithActiveAlterEgoIdentity(messageId, message = getContext()?.chat?.[Number(messageId)], characterId = getActiveCharacterId()) {
+    if (
+        characterId === undefined ||
+        characterId === null ||
+        characterId === '' ||
+        !message ||
+        message.is_user ||
+        message.is_system ||
+        !shouldApplyAlterEgoIdentity(characterId)
+    ) {
+        return false;
+    }
+
+    const identity = getActiveAlterEgoIdentity(characterId);
+
+    if (!identity.name && !identity.avatarUrl) {
+        return false;
+    }
+
+    message.name = identity.name || message.name;
+
+    if (identity.avatarUrl) {
+        message.force_avatar = identity.avatarUrl;
+    }
+
+    if (!message.extra || typeof message.extra !== 'object') {
+        message.extra = {};
+    }
+
+    if (!message.extra[ALTER_EGO_EXTRA_KEY] || typeof message.extra[ALTER_EGO_EXTRA_KEY] !== 'object') {
+        message.extra[ALTER_EGO_EXTRA_KEY] = {};
+    }
+
+    message.extra[ALTER_EGO_EXTRA_KEY][ALTER_EGO_MESSAGE_KEY] = {
+        id: identity.alterEgoId,
+        name: identity.name,
+        avatarMode: identity.avatarMode,
+        avatarKey: identity.avatarKey,
+        avatarUrl: identity.avatarUrl,
+        baseCharacterName: getNativeCharacterName(characterId),
+        baseCharacterAvatar: getNativeCharacterAvatarKey(characterId),
+    };
+
+    syncMessageElementIdentity(messageId, identity);
+    scheduleAlterEgoChatIdentitySave();
+
+    return true;
+}
+
+function syncMessageElementIdentity(messageId, identity) {
+    const $message = getMessageElementById(messageId);
+
+    if (!$message.length) {
+        return;
+    }
+
+    if (identity.name) {
+        $message.attr('ch_name', identity.name);
+        $message.find('.ch_name .name_text').text(identity.name);
+    }
+
+    if (identity.avatarUrl) {
+        $message.attr('force_avatar', 'true');
+        const $image = $message.find('.avatar img');
+
+        if ($image.length) {
+            $image.attr('src', identity.avatarUrl);
+        }
+    }
+}
+
+function scheduleAlterEgoChatIdentitySave() {
+    clearTimeout(alterEgoIdentitySaveTimer);
+
+    alterEgoIdentitySaveTimer = setTimeout(async () => {
+        try {
+            const ctx = getContext();
+
+            if (typeof ctx?.saveChat === 'function') {
+                await ctx.saveChat();
+            }
+        } catch (error) {
+            console.warn(`[${MODULE_NAME}] Failed to save Alter Ego message identity:`, error);
+        }
+    }, 500);
+}
+
+function refreshActiveAlterEgoVisualIdentity(characterId = getActiveCharacterId()) {
+    if (characterId === undefined || characterId === null || characterId === '') {
+        return;
+    }
+
+    const identity = getActiveAlterEgoIdentity(characterId);
+    const nativeAvatarUrl = getCharacterAvatarThumbnailUrl(getNativeCharacterAvatarKey(characterId));
+
+    refreshCharacterListAlterEgoVisual(characterId, identity, nativeAvatarUrl);
+    refreshCharacterEditorAlterEgoVisual(identity);
+}
+
+function scheduleActiveAlterEgoVisualIdentityRefresh(characterId = getActiveCharacterId()) {
+    clearTimeout(alterEgoVisualIdentityRefreshTimer);
+    alterEgoVisualIdentityRefreshTimer = setTimeout(() => {
+        alterEgoVisualIdentityRefreshTimer = null;
+        refreshActiveAlterEgoVisualIdentity(characterId);
+    }, ALTER_EGO_VISUAL_REFRESH_DEBOUNCE_MS);
+}
+
+function refreshCharacterListAlterEgoVisual(characterId, identity, nativeAvatarUrl = '') {
+    const $block = $(`#CharID${characterId}`);
+
+    if (!$block.length) {
+        return;
+    }
+
+    if (identity.name) {
+        $block.find('.ch_name').text(identity.name).attr('title', `[Alter Ego] ${identity.name}`);
+        $block.find('img').attr('alt', identity.name);
+    }
+
+    if (identity.avatarUrl) {
+        $block.find('img').attr('src', identity.avatarUrl);
+    } else if (nativeAvatarUrl) {
+        $block.find('img').attr('src', nativeAvatarUrl);
+    }
+
+    $block
+        .attr('data-dsf-alter-ego-id', identity.alterEgoId)
+        .toggleClass('dsf-alter-ego-active', identity.isAlterEgo);
+}
+
+function refreshCharacterEditorAlterEgoVisual(identity) {
+    const $root = getCharacterEditorRoot();
+
+    if (!$root.length) {
+        return;
+    }
+
+    const selectors = [
+        '#avatar_load_preview',
+        '#avatar_preview',
+        '#character_popup img.avatar',
+        '#character_popup .avatar img',
+        '#rm_ch_create_block .avatar img',
+        '#character_edit_dialogue .avatar img',
+    ];
+
+    const $images = $root.find(selectors.join(','));
+
+    if (identity.avatarUrl) {
+        $images.each(function updateAlterEgoPreview() {
+            const $image = $(this);
+
+            if (!$image.attr('data-dsf-native-src')) {
+                $image.attr('data-dsf-native-src', $image.attr('src') || '');
+            }
+
+            $image.attr('src', identity.avatarUrl);
+            $image.attr('data-dsf-alter-ego-id', identity.alterEgoId);
+        });
+    } else {
+        $images.each(function restoreAlterEgoPreview() {
+            const $image = $(this);
+            const nativeSrc = $image.attr('data-dsf-native-src');
+
+            if (nativeSrc !== undefined) {
+                $image.attr('src', nativeSrc);
+                $image.removeAttr('data-dsf-native-src');
+                $image.removeAttr('data-dsf-alter-ego-id');
+            }
+        });
+    }
+}
+
+function refreshExistingAssistantMessagesForActiveAlterEgo() {
+    const ctx = getContext();
+    const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+    const characterId = getActiveCharacterId();
+
+    chat.forEach((message, index) => {
+        if (isAssistantMessageForCharacter(message, characterId)) {
+            stampMessageWithActiveAlterEgoIdentity(index, message, characterId);
+        }
+    });
+}
+
+function refreshActivePersonaAlterEgoVisualIdentity(personaId = getActivePersonaId()) {
+    const normalizedPersonaId = normalizePersonaId(personaId);
+
+    if (!normalizedPersonaId) {
+        return;
+    }
+
+    const identity = getActivePersonaAlterEgoIdentity(normalizedPersonaId);
+    const nativeAvatarUrl = getPersonaAvatarThumbnailUrl(getNativePersonaAvatarKey(normalizedPersonaId));
+    refreshPersonaListAlterEgoVisual(normalizedPersonaId, identity, nativeAvatarUrl);
+}
+
+function scheduleActivePersonaAlterEgoVisualIdentityRefresh(personaId = getActivePersonaId()) {
+    clearTimeout(personaAlterEgoVisualIdentityRefreshTimer);
+    personaAlterEgoVisualIdentityRefreshTimer = setTimeout(() => {
+        personaAlterEgoVisualIdentityRefreshTimer = null;
+        refreshActivePersonaAlterEgoVisualIdentity(personaId);
+    }, ALTER_EGO_VISUAL_REFRESH_DEBOUNCE_MS);
+}
+
+function refreshPersonaListAlterEgoVisual(personaId, identity, nativeAvatarUrl = '') {
+    const normalizedPersonaId = normalizePersonaId(personaId);
+
+    if (!normalizedPersonaId) {
+        return;
+    }
+
+    const $blocks = $('#user_avatar_block .avatar-container, #user_avatar_block [data-avatar-id]')
+        .filter(function matchPersonaAlterEgoBlock() {
+            return String($(this).attr('data-avatar-id') || '').trim() === normalizedPersonaId;
+        });
+
+    if (!$blocks.length) {
+        return;
+    }
+
+    $blocks.each(function updatePersonaAlterEgoBlock() {
+        const $block = $(this);
+
+        if (identity.name) {
+            $block.find('.ch_name').text(identity.name).attr('title', `[Alter Ego] ${identity.name}`);
+            $block.find('img').attr('alt', identity.name);
+        }
+
+        if (identity.avatarUrl) {
+            $block.find('img').attr('src', identity.avatarUrl);
+        } else if (nativeAvatarUrl) {
+            $block.find('img').attr('src', nativeAvatarUrl);
+        }
+
+        $block
+            .attr('data-dsf-persona-alter-ego-id', identity.alterEgoId)
+            .toggleClass('dsf-alter-ego-active', identity.isAlterEgo);
+    });
+}
+
+function isUserMessage(message) {
+    return isUserChatMessage(message);
+}
+
+function stampMessageWithActivePersonaAlterEgoIdentity(messageId, message = getContext()?.chat?.[Number(messageId)], personaId = getActivePersonaId()) {
+    const normalizedPersonaId = normalizePersonaId(personaId);
+
+    if (!normalizedPersonaId || !message || !isUserChatMessage(message) || !shouldApplyPersonaAlterEgoIdentity(normalizedPersonaId)) {
+        return false;
+    }
+
+    const identity = getActivePersonaAlterEgoIdentity(normalizedPersonaId);
+
+    if (!identity.name && !identity.avatarUrl) {
+        return false;
+    }
+
+    message.name = identity.name || message.name;
+
+    if (identity.avatarUrl) {
+        message.force_avatar = identity.avatarUrl;
+    }
+
+    if (!message.extra || typeof message.extra !== 'object') {
+        message.extra = {};
+    }
+
+    if (!message.extra[ALTER_EGO_EXTRA_KEY] || typeof message.extra[ALTER_EGO_EXTRA_KEY] !== 'object') {
+        message.extra[ALTER_EGO_EXTRA_KEY] = {};
+    }
+
+    const previousStamp = message.extra[ALTER_EGO_EXTRA_KEY].personaAlterEgo;
+    const alreadyStamped = (
+        previousStamp?.id === identity.alterEgoId &&
+        previousStamp?.avatarUrl === identity.avatarUrl &&
+        previousStamp?.name === identity.name &&
+        message.name === identity.name &&
+        (!identity.avatarUrl || message.force_avatar === identity.avatarUrl)
+    );
+
+    if (alreadyStamped) {
+        syncMessageElementIdentity(messageId, identity);
+        return false;
+    }
+
+    message.extra[ALTER_EGO_EXTRA_KEY].personaAlterEgo = {
+        id: identity.alterEgoId,
+        name: identity.name,
+        avatarMode: identity.avatarMode,
+        avatarKey: identity.avatarKey,
+        avatarUrl: identity.avatarUrl,
+        basePersonaName: getNativePersonaName(normalizedPersonaId),
+        basePersonaAvatar: getNativePersonaAvatarKey(normalizedPersonaId),
+    };
+
+    syncMessageElementIdentity(messageId, identity);
+    scheduleAlterEgoChatIdentitySave();
+
+    return true;
+}
+
+function getChatOverrideForUserMessage(messageId, message) {
+    const ctx = getContext();
+    const liveChat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+    const chatOverride = liveChat.slice();
+    const index = Number(messageId);
+
+    if (Number.isInteger(index) && index >= 0) {
+        chatOverride[index] = message;
+        return chatOverride;
+    }
+
+    if (message && !chatOverride.includes(message)) {
+        chatOverride.push(message);
+    }
+
+    return chatOverride;
+}
+
+function applyPersonaAlterEgoSwapForUserMessage(messageId, message = getContext()?.chat?.[Number(messageId)]) {
+    if (!isUserChatMessage(message)) {
+        return false;
+    }
+
+    const personaId = getActivePersonaId();
+
+    if (!personaId) {
+        return false;
+    }
+
+    const state = readPersonaState(personaId);
+    const result = applyTriggeredPersonaAlterEgoSwapToState(state, getChatOverrideForUserMessage(messageId, message));
+
+    if (!result.changed) {
+        return false;
+    }
+
+    schedulePersonaSave(personaId, result.state);
+    refreshActivePersonaAlterEgoVisualIdentity(personaId);
+    setTimeout(() => {
+        renderPersonaPanel();
+        updatePersonaTokenEstimate();
+        updateSettingsActionState();
+    }, 0);
+
+    return true;
+}
+
+function stampLatestUserMessageWithActivePersonaAlterEgo(personaId = getActivePersonaId()) {
+    const ctx = getContext();
+    const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+
+    for (let index = chat.length - 1; index >= 0; index -= 1) {
+        const message = chat[index];
+
+        if (isUserChatMessage(message)) {
+            return stampMessageWithActivePersonaAlterEgoIdentity(index, message, personaId);
+        }
+    }
+
+    return false;
+}
+
 // ============================================================================
 // Section 11. Dynamic Token Estimate
 // ============================================================================
@@ -3283,6 +4811,29 @@ async function getPersonaDynamicTokenCount(personaId = getActivePersonaId()) {
 // -----------------------------------------------------------------------------
 // Dynamic Token Estimate - Character Rendering
 // -----------------------------------------------------------------------------
+
+
+function scheduleTokenEstimateUpdate() {
+    clearTimeout(tokenEstimateTimer);
+
+    tokenUpdateSerial += 1;
+
+    tokenEstimateTimer = setTimeout(() => {
+        tokenEstimateTimer = null;
+        updateTokenEstimate();
+    }, FIELD_EDIT_TOKEN_ESTIMATE_DEBOUNCE_MS);
+}
+
+function schedulePersonaTokenEstimateUpdate() {
+    clearTimeout(personaTokenEstimateTimer);
+
+    personaTokenUpdateSerial += 1;
+
+    personaTokenEstimateTimer = setTimeout(() => {
+        personaTokenEstimateTimer = null;
+        updatePersonaTokenEstimate();
+    }, FIELD_EDIT_TOKEN_ESTIMATE_DEBOUNCE_MS);
+}
 
 async function updateTokenEstimate() {
     const characterId = getActiveCharacterId();
@@ -4103,7 +5654,7 @@ async function resetAllCharactersToOutOfBox() {
 
     const confirmed = window.confirm(
         'Reset Aspect: Evolutia extension state for all characters in Character Management?\n\n' +
-        'This will turn Character Dynamic Fields off and restore the default Background, Personality, and Appearance fields for every character.',
+        'This will turn Character Dynamic Fields off, reset Alter Egos to each character’s base identity, and restore the default Background, Personality, and Appearance fields for every character.',
     );
 
     if (!confirmed) {
@@ -4111,7 +5662,7 @@ async function resetAllCharactersToOutOfBox() {
     }
 
     for (const characterId of characterIds) {
-        const outOfBoxState = createOutOfBoxState();
+        const outOfBoxState = createOutOfBoxState(characterId);
 
         cacheState(characterId, outOfBoxState);
         await saveStateNow(characterId, outOfBoxState);
@@ -4120,10 +5671,12 @@ async function resetAllCharactersToOutOfBox() {
     stateCache.clear();
     restoreSuppressedDescriptions();
 
-    await syncPromptManagerForState(createOutOfBoxState());
+    await syncPromptManagerForState(createOutOfBoxState(getActiveCharacterId()));
 
     renderPanel();
     applyUiVisibility();
+    applyActiveAlterEgoNameToSillyTavern();
+    refreshActiveAlterEgoVisualIdentity();
     updateTokenEstimate();
     updateSettingsActionState();
 
@@ -4233,7 +5786,7 @@ async function resetAllPersonasToOutOfBox() {
 
     const confirmed = window.confirm(
         'Reset Aspect: Evolutia extension state for all personas?\n\n' +
-        'This will turn Persona Dynamic Fields off and restore the default Background, Personality, and Appearance fields for every persona.',
+        'This will turn Persona Dynamic Fields off, reset Alter Egos to each persona’s base identity, and restore the default Background, Personality, and Appearance fields for every persona.',
     );
 
     if (!confirmed) {
@@ -4241,7 +5794,7 @@ async function resetAllPersonasToOutOfBox() {
     }
 
     for (const personaId of personaIds) {
-        const outOfBoxState = createOutOfBoxPersonaState();
+        const outOfBoxState = createOutOfBoxPersonaState(personaId);
 
         cachePersonaState(personaId, outOfBoxState);
         await savePersonaStateNow(personaId, outOfBoxState);
@@ -4249,7 +5802,7 @@ async function resetAllPersonasToOutOfBox() {
 
     personaStateCache.clear();
 
-    await syncPromptManagerForPersonaState(createOutOfBoxPersonaState());
+    await syncPromptManagerForPersonaState(createOutOfBoxPersonaState(getActivePersonaId()));
 
     renderPersonaPanel();
     applyPersonaUiVisibility();
@@ -4343,7 +5896,7 @@ function updateCharacterSettingsActionState() {
             ? 'No characters were found in Character Management.'
             : allOutOfBox
                 ? 'Aspect: Evolutia is already reset for every character in Character Management.'
-                : 'Reset Aspect: Evolutia extension state for every character in Character Management. Character Dynamic Fields will be turned off, and the default Background, Personality, and Appearance fields will be restored.',
+                : 'Reset Aspect: Evolutia extension state for every character in Character Management. Character Dynamic Fields will be turned off, Alter Egos will reset to each character’s base identity, and the default Background, Personality, and Appearance fields will be restored.',
     });
 }
 
@@ -4384,8 +5937,18 @@ function updatePersonaSettingsActionState() {
             ? 'No personas were found in Persona Management.'
             : allOutOfBox
                 ? 'Aspect: Evolutia is already reset for every persona.'
-                : 'Reset Aspect: Evolutia extension state for every persona. Persona Dynamic Fields will be turned off, and the default Background, Personality, and Appearance fields will be restored.',
+                : 'Reset Aspect: Evolutia extension state for every persona. Persona Dynamic Fields will be turned off, Alter Egos will reset to each persona’s base identity, and the default Background, Personality, and Appearance fields will be restored.',
     });
+}
+
+
+function scheduleSettingsActionStateUpdate() {
+    clearTimeout(settingsActionStateTimer);
+
+    settingsActionStateTimer = setTimeout(() => {
+        settingsActionStateTimer = null;
+        updateSettingsActionState();
+    }, FIELD_EDIT_SETTINGS_ACTION_DEBOUNCE_MS);
 }
 
 function updateSettingsActionState() {
@@ -4427,11 +5990,7 @@ function mountExtensionSettings() {
 							id="${UI.SETTINGS_CHARACTER_BOX_ID}"
                             class="dsf-settings-scope-box dsf-settings-character-box"
                         >
-                            <div class="dsf-settings-scope-title">Character Dynamic Fields</div>
-                            <div class="dsf-settings-scope-description">
-                                Manage Dynamic Fields that replace character Description injection.
-                            </div>
-
+                            <div class="dsf-settings-scope-title"><span class="dsf-header-label">Character Dynamic Fields</span></div>
                             <div class="dsf-settings-actions">
                                 <button
                                     id="${UI.SETTINGS_CHARACTER_REMOVE_FIELDS_ID}"
@@ -4456,7 +6015,7 @@ function mountExtensionSettings() {
                                     id="${UI.SETTINGS_CHARACTER_RESET_EXTENSION_ID}"
                                     type="button"
                                     class="menu_button danger_button"
-                                    title="Reset Aspect: Evolutia extension state for every character in Character Management. Character Dynamic Fields will be turned off, and the default Background, Personality, and Appearance fields will be restored."
+                                    title="Reset Aspect: Evolutia extension state for every character in Character Management. Character Dynamic Fields will be turned off, Alter Egos will reset to each character’s base identity, and the default Background, Personality, and Appearance fields will be restored."
                                 >
                                     Reset Extension (Characters)
                                 </button>
@@ -4467,11 +6026,7 @@ function mountExtensionSettings() {
                             id="${UI.SETTINGS_PERSONA_BOX_ID}"
                             class="dsf-settings-scope-box dsf-settings-persona-box"
                         >
-                            <div class="dsf-settings-scope-title">Persona Dynamic Fields</div>
-                            <div class="dsf-settings-scope-description">
-                                Manage Dynamic Fields that replace Persona Description injection through Prompt Manager.
-                            </div>
-
+                            <div class="dsf-settings-scope-title"><span class="dsf-header-label">Persona Dynamic Fields</span></div>
                             <div class="dsf-settings-actions">
                                 <button
                                     id="${UI.SETTINGS_PERSONA_REMOVE_FIELDS_ID}"
@@ -5023,6 +6578,228 @@ function ensureStyles() {
             align-self: stretch;
         }
 
+
+        .dsf-alter-ego-row {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            width: 100%;
+            max-width: none;
+            min-width: 0;
+            flex: 1 1 100%;
+            align-self: stretch;
+            grid-column: 1 / -1;
+            box-sizing: border-box;
+            margin: 6px 0 8px;
+            padding: 0 0 10px;
+            border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.12));
+            border-radius: 10px;
+            background: var(--SmartThemeBlurTintColor, rgba(0,0,0,0.08));
+            overflow: hidden;
+        }
+
+        .dsf-alter-ego-row * {
+            box-sizing: border-box;
+        }
+
+        #${UI.SETTINGS_ID} .dsf-settings-scope-title,
+        .dsf-alter-ego-row .dsf-alter-ego-header {
+            position: relative;
+            isolation: isolate;
+            display: block;
+            box-sizing: border-box;
+            width: 100%;
+            max-width: none;
+            min-width: 0;
+            padding: 0.45em 0.65em;
+            margin: 0;
+            border: 0;
+            border-radius: 4px;
+            color: #fff;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+            text-shadow:
+                0 1px 1px rgba(0, 0, 0, 0.90),
+                0 0 5px rgba(255, 255, 255, 0.08);
+            opacity: 1;
+            overflow: hidden;
+            background:
+                linear-gradient(
+                    90deg,
+                    #000 0%,
+                    #030303 14%,
+                    #080808 26%,
+                    #111111 36%,
+                    #1c1c1c 44%,
+                    #292929 50%,
+                    #1c1c1c 56%,
+                    #111111 64%,
+                    #080808 74%,
+                    #030303 86%,
+                    #000 100%
+                );
+            box-shadow:
+                inset 0 1px 0 rgba(255,255,255,0.10),
+                inset 0 -1px 0 rgba(0,0,0,0.90),
+                0 1px 0 rgba(255,255,255,0.04);
+        }
+
+        #${UI.SETTINGS_ID} .dsf-settings-scope-title {
+            width: calc(100% + 20px);
+            margin: 0 -10px 8px;
+            border-radius: 10px 10px 0 0;
+        }
+
+        .dsf-alter-ego-row .dsf-alter-ego-header {
+            width: 100%;
+            margin: 0;
+            border-radius: 10px 10px 0 0;
+        }
+
+        #${UI.SETTINGS_ID} .dsf-settings-scope-title > .dsf-header-label,
+        .dsf-alter-ego-row .dsf-alter-ego-header > .dsf-header-label {
+            position: relative;
+            z-index: 2;
+        }
+
+        #${UI.SETTINGS_ID} .dsf-settings-scope-title::before,
+        .dsf-alter-ego-row .dsf-alter-ego-header::before,
+        #${UI.SETTINGS_ID} .dsf-settings-scope-title::after,
+        .dsf-alter-ego-row .dsf-alter-ego-header::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        #${UI.SETTINGS_ID} .dsf-settings-scope-title::before,
+        .dsf-alter-ego-row .dsf-alter-ego-header::before {
+            background:
+                repeating-linear-gradient(
+                    135deg,
+                    rgba(255,255,255,0.09) 0,
+                    rgba(255,255,255,0.09) 1px,
+                    transparent 1px,
+                    transparent 10px
+                );
+            -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 22%, rgba(0,0,0,0.70) 30%, transparent 40%, transparent 60%, rgba(0,0,0,0.70) 70%, #000 78%, #000 100%);
+            mask-image: linear-gradient(90deg, #000 0%, #000 22%, rgba(0,0,0,0.70) 30%, transparent 40%, transparent 60%, rgba(0,0,0,0.70) 70%, #000 78%, #000 100%);
+        }
+
+        #${UI.SETTINGS_ID} .dsf-settings-scope-title::after,
+        .dsf-alter-ego-row .dsf-alter-ego-header::after {
+            background:
+                repeating-linear-gradient(
+                    135deg,
+                    rgba(0,0,0,0.28) 0,
+                    rgba(0,0,0,0.28) 1px,
+                    transparent 1px,
+                    transparent 10px
+                );
+            -webkit-mask-image: linear-gradient(90deg, transparent 0%, transparent 22%, rgba(0,0,0,0.35) 31%, #000 41%, #000 59%, rgba(0,0,0,0.35) 69%, transparent 78%, transparent 100%);
+            mask-image: linear-gradient(90deg, transparent 0%, transparent 22%, rgba(0,0,0,0.35) 31%, #000 41%, #000 59%, rgba(0,0,0,0.35) 69%, transparent 78%, transparent 100%);
+        }
+
+        .dsf-alter-ego-row .dsf-alter-ego-body {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 100%;
+            padding: 10px;
+        }
+
+        .dsf-alter-ego-row .dsf-alter-ego-preview {
+            width: 72px;
+            height: 72px;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.12));
+            background: rgba(0,0,0,0.18);
+            flex: 0 0 auto;
+        }
+
+        .dsf-alter-ego-row .dsf-alter-ego-preview img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .dsf-alter-ego-row .dsf-alter-ego-control-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 100%;
+            min-width: 0;
+        }
+
+        .dsf-alter-ego-row .dsf-alter-ego-current-group,
+        .dsf-alter-ego-row .dsf-alter-ego-image-group {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 8px;
+            width: 100%;
+            min-width: 0;
+        }
+
+        .dsf-alter-ego-row .dsf-alter-ego-control {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 4px;
+            min-width: 0;
+            width: 100%;
+        }
+
+        .dsf-alter-ego-row .dsf-alter-ego-control .dsf-label {
+            display: block;
+            width: 100%;
+            margin: 0;
+        }
+
+        .dsf-alter-ego-row .dsf-alter-ego-control select,
+        .dsf-alter-ego-row .dsf-alter-ego-control input {
+            width: 100%;
+        }
+
+        .dsf-alter-ego-row .dsf-alter-ego-actions {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            width: 100%;
+            margin: 0;
+        }
+
+        .dsf-alter-ego-row .dsf-alter-ego-actions button {
+            width: auto;
+            min-width: max-content;
+            white-space: nowrap;
+        }
+
+        .dsf-alter-ego-row .dsf-alter-ego-trigger-buttons {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            width: 100%;
+            margin: 0;
+        }
+
+        .dsf-alter-ego-row .dsf-alter-ego-trigger-buttons button {
+            width: auto;
+            min-width: max-content;
+            white-space: nowrap;
+        }
+
+        .dsf-alter-ego-active {
+            outline: 1px solid #b76e79;
+            outline-offset: -1px;
+        }
+
         #${UI.PANEL_ID} .dsf-fields,
         #${UI.PERSONA_PANEL_ID} .dsf-fields {
             width: 100%;
@@ -5119,6 +6896,7 @@ function ensureStyles() {
         }
 
         #${UI.PANEL_ID} .dsf-label,
+        .dsf-alter-ego-row .dsf-label,
         #${UI.PERSONA_PANEL_ID} .dsf-label {
             font-size: 0.85em;
             opacity: 0.85;
@@ -5126,6 +6904,7 @@ function ensureStyles() {
         }
 
         #${UI.PANEL_ID} .dsf-trigger-mode-row,
+        .dsf-alter-ego-row .dsf-trigger-mode-row,
         #${UI.PERSONA_PANEL_ID} .dsf-trigger-mode-row {
             display: flex;
             align-items: center;
@@ -5136,6 +6915,7 @@ function ensureStyles() {
         }
 
         #${UI.PANEL_ID} .dsf-keyword-mode-wrap,
+        .dsf-alter-ego-row .dsf-keyword-mode-wrap,
         #${UI.PERSONA_PANEL_ID} .dsf-keyword-mode-wrap {
             display: inline-flex;
             align-items: center;
@@ -5149,6 +6929,7 @@ function ensureStyles() {
         #${UI.PANEL_ID} .dsf-activating-keyword-mode,
         #${UI.PANEL_ID} .dsf-enabling-keyword-mode,
         #${UI.PANEL_ID} .dsf-disabling-keyword-mode,
+        .dsf-alter-ego-row .dsf-alter-ego-change-keyword-mode,
         #${UI.PERSONA_PANEL_ID} .dsf-activating-keyword-mode,
         #${UI.PERSONA_PANEL_ID} .dsf-enabling-keyword-mode,
         #${UI.PERSONA_PANEL_ID} .dsf-disabling-keyword-mode {
@@ -5181,6 +6962,8 @@ function ensureStyles() {
         #${UI.PANEL_ID} .dsf-keyword-triggers-wrap,
         #${UI.PANEL_ID} .dsf-trigger-actions-wrap,
         #${UI.PANEL_ID} .dsf-triggered-by-wrap,
+        .dsf-alter-ego-row .dsf-keyword-triggers-wrap,
+        .dsf-alter-ego-row .dsf-triggered-by-wrap,
         #${UI.PERSONA_PANEL_ID} .dsf-keyword-triggers-wrap,
         #${UI.PERSONA_PANEL_ID} .dsf-triggered-by-wrap {
             position: relative;
@@ -5192,6 +6975,8 @@ function ensureStyles() {
         #${UI.PANEL_ID} .dsf-keyword-triggers-button,
         #${UI.PANEL_ID} .dsf-trigger-actions-button,
         #${UI.PANEL_ID} .dsf-triggered-by-button,
+        .dsf-alter-ego-row .dsf-keyword-triggers-button,
+        .dsf-alter-ego-row .dsf-triggered-by-button,
         #${UI.PERSONA_PANEL_ID} .dsf-keyword-triggers-button,
         #${UI.PERSONA_PANEL_ID} .dsf-triggered-by-button {
             display: inline-flex;
@@ -5206,6 +6991,8 @@ function ensureStyles() {
         #${UI.PANEL_ID} .dsf-keyword-triggers-menu,
         #${UI.PANEL_ID} .dsf-trigger-actions-menu,
         #${UI.PANEL_ID} .dsf-triggered-by-menu,
+        .dsf-alter-ego-row .dsf-keyword-triggers-menu,
+        .dsf-alter-ego-row .dsf-triggered-by-menu,
         #${UI.PERSONA_PANEL_ID} .dsf-keyword-triggers-menu,
         #${UI.PERSONA_PANEL_ID} .dsf-triggered-by-menu {
             display: none;
@@ -5225,6 +7012,7 @@ function ensureStyles() {
 
         #${UI.PANEL_ID} .dsf-keyword-triggers-menu,
         #${UI.PANEL_ID} .dsf-trigger-actions-menu,
+        .dsf-alter-ego-row .dsf-keyword-triggers-menu,
         #${UI.PERSONA_PANEL_ID} .dsf-keyword-triggers-menu {
             width: min(520px, calc(100vw - 16px));
         }
@@ -5232,6 +7020,8 @@ function ensureStyles() {
         #${UI.PANEL_ID} .dsf-keyword-triggers-menu.dsf-menu-open,
         #${UI.PANEL_ID} .dsf-trigger-actions-menu.dsf-menu-open,
         #${UI.PANEL_ID} .dsf-triggered-by-menu.dsf-menu-open,
+        .dsf-alter-ego-row .dsf-keyword-triggers-menu.dsf-menu-open,
+        .dsf-alter-ego-row .dsf-triggered-by-menu.dsf-menu-open,
         #${UI.PERSONA_PANEL_ID} .dsf-keyword-triggers-menu.dsf-menu-open,
         #${UI.PERSONA_PANEL_ID} .dsf-triggered-by-menu.dsf-menu-open {
             position: fixed;
@@ -5244,7 +7034,33 @@ function ensureStyles() {
             overflow: auto;
         }
 
+        .dsf-menu-close-row {
+            display: flex;
+            justify-content: flex-end;
+            width: 100%;
+            margin: -2px 0 2px;
+        }
+
+        .dsf-menu-close {
+            display: inline-flex !important;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 1.9em;
+            width: 1.9em !important;
+            min-width: 1.9em !important;
+            max-width: 1.9em !important;
+            height: 1.9em !important;
+            min-height: 1.9em !important;
+            max-height: 1.9em !important;
+            aspect-ratio: 1 / 1;
+            padding: 0 !important;
+            line-height: 1;
+            font-weight: 700;
+            box-sizing: border-box;
+        }
+
         #${UI.PANEL_ID} .dsf-trigger-source-option,
+        .dsf-alter-ego-row .dsf-trigger-source-option,
         #${UI.PERSONA_PANEL_ID} .dsf-trigger-source-option {
             display: flex;
             align-items: center;
@@ -5256,19 +7072,54 @@ function ensureStyles() {
         }
 
         #${UI.PANEL_ID} .dsf-trigger-source-option input,
+        .dsf-alter-ego-row .dsf-trigger-source-option input,
         #${UI.PERSONA_PANEL_ID} .dsf-trigger-source-option input {
             width: auto;
             min-width: unset;
         }
 
+        #${UI.PANEL_ID} .dsf-trigger-source-option input[type="checkbox"],
+        .dsf-alter-ego-row .dsf-trigger-source-option input[type="checkbox"],
+        #${UI.PERSONA_PANEL_ID} .dsf-trigger-source-option input[type="checkbox"] {
+            flex: 0 0 16px;
+            width: 16px !important;
+            min-width: 16px !important;
+            max-width: 16px !important;
+            height: 16px !important;
+            min-height: 16px !important;
+            max-height: 16px !important;
+            aspect-ratio: 1 / 1;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            transform: none;
+        }
+
+        #${UI.PANEL_ID} .dsf-trigger-source-option span,
+        .dsf-alter-ego-row .dsf-trigger-source-option span,
+        #${UI.PERSONA_PANEL_ID} .dsf-trigger-source-option span {
+            flex: 1 1 auto;
+            min-width: 0;
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }
+
+        #${UI.PANEL_ID} .dsf-triggered-by-menu,
+        .dsf-alter-ego-row .dsf-triggered-by-menu,
+        #${UI.PERSONA_PANEL_ID} .dsf-triggered-by-menu {
+            min-width: min(280px, calc(100vw - 16px));
+        }
+
         #${UI.PANEL_ID} .dsf-trigger-textarea,
         #${UI.PANEL_ID} .dsf-trigger-action-instruction,
+        .dsf-alter-ego-row .dsf-trigger-textarea,
         #${UI.PERSONA_PANEL_ID} .dsf-trigger-textarea {
             min-height: 44px;
             resize: vertical;
         }
 
         #${UI.PANEL_ID} .dsf-keyword-trigger-group,
+        .dsf-alter-ego-row .dsf-keyword-trigger-group,
         #${UI.PERSONA_PANEL_ID} .dsf-keyword-trigger-group {
             display: flex;
             flex-direction: column;
@@ -5428,14 +7279,10 @@ function ensureStyles() {
             outline: 1px solid rgba(183, 110, 121, 0.65);
             outline-offset: 2px;
             border-radius: 12px;
-            padding: 10px;
+            padding: 0 10px 10px;
             margin: 10px 0 14px;
             background: var(--SmartThemeBlurTintColor, rgba(0,0,0,0.08));
-        }
-
-        #${UI.SETTINGS_ID} .dsf-settings-scope-title {
-            font-weight: 700;
-            margin-bottom: 4px;
+            overflow: hidden;
         }
 
         #${UI.SETTINGS_ID} .dsf-settings-scope-description {
@@ -5479,6 +7326,40 @@ function ensureStyles() {
         #${UI.SETTINGS_AUTHOR_ID} {
             text-align: right;
             margin-left: auto;
+        }
+
+        .dsf-image-file-row {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.5em;
+        }
+
+        .dsf-image-file-name {
+            opacity: 0.8;
+            font-size: 0.9em;
+            word-break: break-word;
+        }
+
+        .dsf-image-file-row .text_pole {
+            flex: 1 1 18em;
+            min-width: 12em;
+        }
+
+        .dsf-muted-help {
+            display: block;
+            margin-top: 0.35em;
+            opacity: 0.7;
+            font-size: 0.85em;
+            line-height: 1.25;
+        }
+
+        .dsf-image-file-input {
+            position: absolute;
+            left: -9999px;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
         }
     `;
 
@@ -5574,7 +7455,7 @@ function getOwnText(element) {
 }
 
 function isAspectEvolutiaUiElement(element) {
-    return Boolean($(element).closest(`#${UI.PERSONA_BAR_ID}, #${UI.BAR_ID}`).length);
+    return Boolean($(element).closest(`#${UI.PERSONA_BAR_ID}, #${UI.BAR_ID}, #${UI.PERSONA_ALTER_EGO_ROW_ID}, #${UI.ALTER_EGO_ROW_ID}`).length);
 }
 
 function isHighLevelPersonaRoot($element) {
@@ -5998,6 +7879,7 @@ function mountUi() {
                     <div class="dsf-menu-wrap">
                         <button id="${UI.IMPORT_ID}" type="button" class="menu_button" title="Import Character Dynamic Fields.">Import</button>
                         <div id="${UI.IMPORT_MENU_ID}" class="dsf-menu">
+                            <div class="dsf-menu-close-row"><button type="button" class="menu_button dsf-menu-close" title="Close">×</button></div>
                             <button type="button" class="menu_button" data-dsf-import="${IMPORT_SOURCE.CHARACTER_CARD}">Character Description</button>
                             <button type="button" class="menu_button" data-dsf-import="${IMPORT_SOURCE.NATIVE_FIELDS}">SillyTavern Fields</button>
                             <button type="button" class="menu_button" data-dsf-import="${IMPORT_SOURCE.FILE_JSON}">File (JSON)</button>
@@ -6008,6 +7890,7 @@ function mountUi() {
                     <div class="dsf-menu-wrap">
                         <button id="${UI.EXPORT_ID}" type="button" class="menu_button" title="Export Character Dynamic Fields.">Export</button>
                         <div id="${UI.EXPORT_MENU_ID}" class="dsf-menu">
+                            <div class="dsf-menu-close-row"><button type="button" class="menu_button dsf-menu-close" title="Close">×</button></div>
                             <button type="button" class="menu_button" data-dsf-export="${EXPORT_TARGET.FILE_JSON}">File (JSON)</button>
                             <button type="button" class="menu_button" data-dsf-export="${EXPORT_TARGET.CLIPBOARD_JSON}">Clipboard (JSON)</button>
                         </div>
@@ -6025,6 +7908,17 @@ function mountUi() {
         `);
 
         getDescriptionInsertTarget($description).before($bar);
+    }
+
+    const $currentBar = $(`#${UI.BAR_ID}`);
+    let $alterEgoContainer = $(`#${UI.ALTER_EGO_ROW_ID}`);
+
+    if (!$alterEgoContainer.length) {
+        $alterEgoContainer = $(`<div id="${UI.ALTER_EGO_ROW_ID}" class="dsf-alter-ego-row" data-target-scope="${TARGET_SCOPE.CHARACTER}"></div>`);
+    }
+
+    if ($currentBar.length) {
+        $currentBar.before($alterEgoContainer.detach());
     }
 
     bindUiHandlers();
@@ -6085,6 +7979,7 @@ function mountPersonaUi() {
                     <div class="dsf-menu-wrap">
                         <button id="${UI.PERSONA_IMPORT_ID}" type="button" class="menu_button" title="Import Persona Dynamic Fields.">Import</button>
                         <div id="${UI.PERSONA_IMPORT_MENU_ID}" class="dsf-menu">
+                            <div class="dsf-menu-close-row"><button type="button" class="menu_button dsf-menu-close" title="Close">×</button></div>
                             <button type="button" class="menu_button" data-dsf-persona-import="${IMPORT_SOURCE.PERSONA_DESCRIPTION}">Persona Description</button>
                             <button type="button" class="menu_button" data-dsf-persona-import="${IMPORT_SOURCE.FILE_JSON}">File (JSON)</button>
                             <button type="button" class="menu_button" data-dsf-persona-import="${IMPORT_SOURCE.CLIPBOARD_JSON}">Clipboard (JSON)</button>
@@ -6094,6 +7989,7 @@ function mountPersonaUi() {
                     <div class="dsf-menu-wrap">
                         <button id="${UI.PERSONA_EXPORT_ID}" type="button" class="menu_button" title="Export Persona Dynamic Fields.">Export</button>
                         <div id="${UI.PERSONA_EXPORT_MENU_ID}" class="dsf-menu">
+                            <div class="dsf-menu-close-row"><button type="button" class="menu_button dsf-menu-close" title="Close">×</button></div>
                             <button type="button" class="menu_button" data-dsf-persona-export="${EXPORT_TARGET.FILE_JSON}">File (JSON)</button>
                             <button type="button" class="menu_button" data-dsf-persona-export="${EXPORT_TARGET.CLIPBOARD_JSON}">Clipboard (JSON)</button>
                         </div>
@@ -6114,6 +8010,17 @@ function mountPersonaUi() {
         } else {
             $description.before($bar);
         }
+    }
+
+    const $currentPersonaBar = $(`#${UI.PERSONA_BAR_ID}`);
+    let $personaAlterEgoContainer = $(`#${UI.PERSONA_ALTER_EGO_ROW_ID}`);
+
+    if (!$personaAlterEgoContainer.length) {
+        $personaAlterEgoContainer = $(`<div id="${UI.PERSONA_ALTER_EGO_ROW_ID}" class="dsf-alter-ego-row" data-target-scope="${TARGET_SCOPE.PERSONA}"></div>`);
+    }
+
+    if ($currentPersonaBar.length) {
+        $currentPersonaBar.before($personaAlterEgoContainer.detach());
     }
 
     if (typeof bindPersonaUiHandlers === 'function') {
@@ -6194,6 +8101,7 @@ function applyPersonaUiVisibility() {
 
     setPersonaNativeRegionHidden(state.swapEnabled);
 
+    $(`#${UI.PERSONA_ALTER_EGO_ROW_ID}`).toggle(Boolean(personaId));
     $panel.toggle(state.swapEnabled);
     setPersonaTokenCounterHidden(state.swapEnabled);
 }
@@ -6201,6 +8109,420 @@ function applyPersonaUiVisibility() {
 // -----------------------------------------------------------------------------
 // User Interface Rendering - Character Field List
 // -----------------------------------------------------------------------------
+
+
+function renderAlterEgoAvatarModeOptions(selectedMode) {
+    return Object.values(ALTER_EGO_AVATAR_MODE)
+        .map((mode) => `
+            <option value="${escapeAttribute(mode)}" ${selectedMode === mode ? 'selected' : ''}>
+                ${escapeTextarea(ALTER_EGO_AVATAR_MODE_LABELS[mode] || mode)}
+            </option>
+        `)
+        .join('');
+}
+
+function renderAlterEgoAvatarKeyOptions(selectedAvatarKey) {
+    const avatars = getSelectableAvatarCharacters();
+
+    return [
+        '<option value="">Select another character image…</option>',
+        ...avatars.map((entry) => `
+            <option value="${escapeAttribute(entry.avatar)}" ${entry.avatar === selectedAvatarKey ? 'selected' : ''}>
+                ${escapeTextarea(entry.name || entry.avatar)} — ${escapeTextarea(entry.avatar)}
+            </option>
+        `),
+    ].join('');
+}
+
+function renderPersonaAlterEgoAvatarModeOptions(selectedMode) {
+    return Object.values(ALTER_EGO_AVATAR_MODE)
+        .map((mode) => `
+            <option value="${escapeAttribute(mode)}" ${selectedMode === mode ? 'selected' : ''}>
+                ${escapeTextarea(PERSONA_ALTER_EGO_AVATAR_MODE_LABELS[mode] || mode)}
+            </option>
+        `)
+        .join('');
+}
+
+function renderPersonaAlterEgoAvatarKeyOptions(selectedAvatarKey) {
+    const avatars = getSelectablePersonaAvatars();
+
+    return [
+        '<option value="">Select another persona image…</option>',
+        ...avatars.map((entry) => `
+            <option value="${escapeAttribute(entry.avatar)}" ${entry.avatar === selectedAvatarKey ? 'selected' : ''}>
+                ${escapeTextarea(entry.name || entry.avatar)} — ${escapeTextarea(entry.avatar)}
+            </option>
+        `),
+    ].join('');
+}
+
+function renderAlterEgoControlsHtml(state) {
+    const normalized = normalizeCharacterState(state);
+    const activeAlterEgo = getActiveAlterEgo(normalized) || createBaseAlterEgo();
+    const identity = getActiveAlterEgoIdentity();
+    const avatarUrlValue = (
+        activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.DATA_URL ||
+        activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.IMAGE_FILE
+    )
+        ? activeAlterEgo.avatarDataUrl
+        : activeAlterEgo.avatarUrl;
+    const alterEgoTriggerSources = normalizeTriggerSources(activeAlterEgo.triggerSources);
+    const alterEgoTriggerSourceOptionsHtml = Object.values(TRIGGER_SOURCE)
+        .map((source) => `
+            <label class="checkbox_label dsf-trigger-source-option">
+                <input
+                    class="dsf-alter-ego-trigger-source"
+                    type="checkbox"
+                    value="${escapeAttribute(source)}"
+                    ${alterEgoTriggerSources.includes(source) ? 'checked' : ''}
+                >
+                <span>${escapeTextarea(TRIGGER_SOURCE_LABELS[source])}</span>
+            </label>
+        `)
+        .join('');
+
+    const alterEgoOptions = normalized.alterEgos
+        .map((alterEgo) => `
+            <option value="${escapeAttribute(alterEgo.id)}" ${alterEgo.id === normalized.activeAlterEgoId ? 'selected' : ''}>
+                ${escapeTextarea(alterEgo.name || ALTER_EGO_DEFAULT_NAME)}
+            </option>
+        `)
+        .join('');
+
+    const imageSourceSpecificControl = (() => {
+        if (activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.SAME_AVATAR_DIRECTORY) {
+            return `
+                <label class="dsf-alter-ego-control dsf-alter-ego-avatar-key-wrap">
+                    <span class="dsf-label">Other Character Image</span>
+                    <select id="${UI.ALTER_EGO_AVATAR_KEY_ID}" class="text_pole">
+                        ${renderAlterEgoAvatarKeyOptions(activeAlterEgo.avatarKey)}
+                    </select>
+                </label>
+            `;
+        }
+
+        if (activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.IMAGE_FILE) {
+            return `
+                <label class="dsf-alter-ego-control dsf-alter-ego-avatar-file-wrap">
+                    <span class="dsf-label">Upload File</span>
+                    <div class="dsf-image-file-row">
+                        <button id="${UI.ALTER_EGO_IMAGE_FILE_BUTTON_ID}" type="button" class="menu_button">Upload File</button>
+                        <span class="dsf-image-file-name">${escapeTextarea(activeAlterEgo.avatarFileName || 'No upload file selected')}</span>
+                    </div>
+                    <input
+                        id="${UI.ALTER_EGO_IMAGE_FILE_INPUT_ID}"
+                        class="dsf-image-file-input"
+                        type="file"
+                        accept="image/*"
+                    >
+                </label>
+            `;
+        }
+
+        if (activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.LOCAL_FILE) {
+            return `
+                <label class="dsf-alter-ego-control dsf-alter-ego-avatar-local-file-wrap">
+                    <span class="dsf-label">Local File</span>
+                    <div class="dsf-image-file-row">
+                        <input
+                            id="${UI.ALTER_EGO_LOCAL_FILE_PATH_ID}"
+                            class="text_pole"
+                            type="text"
+                            value="${escapeAttribute(activeAlterEgo.avatarLocalPath || '')}"
+                            placeholder="files/example.png or assets/character/example.png"
+                        >
+                        <button id="${UI.ALTER_EGO_LOCAL_FILE_VERIFY_ID}" type="button" class="menu_button">Verify</button>
+                    </div>
+                    <small class="dsf-muted-help">Use a user-data relative path starting with <code>files/</code> or <code>assets/</code>. Example: <code>files/example.png</code> or <code>assets/character/example.png</code>.</small>
+                </label>
+            `;
+        }
+
+        if (
+            activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.URL ||
+            activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.DATA_URL
+        ) {
+            return `
+                <label class="dsf-alter-ego-control dsf-alter-ego-avatar-url-wrap">
+                    <span class="dsf-label">${activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.DATA_URL ? 'Embedded Image Data' : 'Image URL'}</span>
+                    <input
+                        id="${UI.ALTER_EGO_AVATAR_URL_ID}"
+                        class="text_pole"
+                        type="text"
+                        value="${escapeAttribute(avatarUrlValue)}"
+                        placeholder="${activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.DATA_URL ? 'data:image/png;base64,...' : 'https://...'}"
+                    >
+                </label>
+            `;
+        }
+
+        return '';
+    })();
+
+    return `
+        <div class="dsf-alter-ego-header"><span class="dsf-header-label">Alter Ego</span></div>
+
+        <div class="dsf-alter-ego-body">
+            <div class="dsf-alter-ego-preview">
+                <img
+                    id="${UI.ALTER_EGO_AVATAR_PREVIEW_ID}"
+                    src="${escapeAttribute(identity.avatarUrl || '')}"
+                    alt="${escapeAttribute(activeAlterEgo.name || 'Alter Ego')}"
+                >
+            </div>
+
+            <div class="dsf-alter-ego-control-stack">
+                <div class="dsf-alter-ego-current-group">
+                    <label class="dsf-alter-ego-control dsf-alter-ego-current-wrap">
+                        <span class="dsf-label">Current Ego</span>
+                        <select id="${UI.ALTER_EGO_SELECT_ID}" class="text_pole">
+                            ${alterEgoOptions}
+                        </select>
+                    </label>
+
+                    <div class="dsf-alter-ego-actions">
+                        <button id="${UI.ALTER_EGO_CREATE_ID}" type="button" class="menu_button">Create</button>
+                        <button id="${UI.ALTER_EGO_DUPLICATE_ID}" type="button" class="menu_button">Duplicate</button>
+                        <button id="${UI.ALTER_EGO_RENAME_ID}" type="button" class="menu_button">Rename</button>
+                        <button
+                            id="${UI.ALTER_EGO_DELETE_ID}"
+                            type="button"
+                            class="menu_button danger_button"
+                            ${activeAlterEgo.id === ALTER_EGO_BASE_ID ? 'disabled' : ''}
+                            title="${activeAlterEgo.id === ALTER_EGO_BASE_ID ? 'The base alter ego cannot be deleted.' : 'Delete this alter ego.'}"
+                        >Delete</button>
+                    </div>
+
+                    <div class="dsf-alter-ego-trigger-buttons">
+                        <div class="dsf-keyword-triggers-wrap dsf-alter-ego-keyword-triggers-wrap">
+                            <button id="${UI.ALTER_EGO_KEYWORD_TRIGGERS_BUTTON_ID}" type="button" class="menu_button dsf-keyword-triggers-button">Keyword Triggers</button>
+                            <div class="dsf-keyword-triggers-menu dsf-alter-ego-keyword-triggers-menu">
+                                <div class="dsf-menu-close-row"><button type="button" class="menu_button dsf-menu-close" title="Close">×</button></div>
+                                <div class="dsf-keyword-trigger-group">
+                                    <div class="dsf-label">Swap Triggers (Separate by comma, semicolon, or newline).</div>
+                                    <textarea class="text_pole dsf-alter-ego-change-conditions dsf-trigger-textarea" placeholder="Example: I put on my supersuit, I take off my supersuit">${escapeTextarea(activeAlterEgo.changeConditions)}</textarea>
+                                    <div class="dsf-trigger-mode-row">
+                                        <label class="dsf-keyword-mode-wrap" title="Any means at least one alter ego trigger must match. All means every alter ego trigger must match.">
+                                            <span>Match</span>
+                                            <select class="text_pole dsf-alter-ego-change-keyword-mode">
+                                                <option value="${KEYWORD_MODE.ANY}" ${activeAlterEgo.changeKeywordMode === KEYWORD_MODE.ANY ? 'selected' : ''}>Any</option>
+                                                <option value="${KEYWORD_MODE.ALL}" ${activeAlterEgo.changeKeywordMode === KEYWORD_MODE.ALL ? 'selected' : ''}>All</option>
+                                            </select>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="dsf-triggered-by-wrap dsf-alter-ego-triggered-by-wrap">
+                            <button id="${UI.ALTER_EGO_TRIGGER_SOURCES_BUTTON_ID}" type="button" class="menu_button dsf-triggered-by-button">Trigger Sources</button>
+                            <div class="dsf-triggered-by-menu dsf-alter-ego-triggered-by-menu">
+                                <div class="dsf-menu-close-row"><button type="button" class="menu_button dsf-menu-close" title="Close">×</button></div>
+                                ${alterEgoTriggerSourceOptionsHtml}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dsf-alter-ego-image-group">
+                    <label class="dsf-alter-ego-control dsf-alter-ego-avatar-mode-wrap">
+                        <span class="dsf-label">Image Source</span>
+                        <select id="${UI.ALTER_EGO_AVATAR_MODE_ID}" class="text_pole">
+                            ${renderAlterEgoAvatarModeOptions(activeAlterEgo.avatarMode)}
+                        </select>
+                    </label>
+
+                    ${imageSourceSpecificControl}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderPersonaAlterEgoControlsHtml(state) {
+    const personaId = getActivePersonaId();
+    const normalized = normalizePersonaState(state, { personaId });
+    const activeAlterEgo = getActiveAlterEgo(normalized) || createBasePersonaAlterEgo({ personaId });
+    const identity = getActivePersonaAlterEgoIdentity(personaId);
+    const avatarUrlValue = (
+        activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.DATA_URL ||
+        activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.IMAGE_FILE
+    )
+        ? activeAlterEgo.avatarDataUrl
+        : activeAlterEgo.avatarUrl;
+    const alterEgoTriggerSources = normalizeTriggerSources(activeAlterEgo.triggerSources);
+    const alterEgoTriggerSourceOptionsHtml = Object.values(TRIGGER_SOURCE)
+        .map((source) => `
+            <label class="checkbox_label dsf-trigger-source-option">
+                <input
+                    class="dsf-persona-alter-ego-trigger-source"
+                    type="checkbox"
+                    value="${escapeAttribute(source)}"
+                    ${alterEgoTriggerSources.includes(source) ? 'checked' : ''}
+                >
+                <span>${escapeTextarea(TRIGGER_SOURCE_LABELS[source])}</span>
+            </label>
+        `)
+        .join('');
+
+    const alterEgoOptions = normalized.alterEgos
+        .map((alterEgo) => `
+            <option value="${escapeAttribute(alterEgo.id)}" ${alterEgo.id === normalized.activeAlterEgoId ? 'selected' : ''}>
+                ${escapeTextarea(alterEgo.name || ALTER_EGO_DEFAULT_NAME)}
+            </option>
+        `)
+        .join('');
+
+    const imageSourceSpecificControl = (() => {
+        if (activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.SAME_AVATAR_DIRECTORY) {
+            return `
+                <label class="dsf-alter-ego-control dsf-alter-ego-avatar-key-wrap">
+                    <span class="dsf-label">Other Persona Image</span>
+                    <select id="${UI.PERSONA_ALTER_EGO_AVATAR_KEY_ID}" class="text_pole">
+                        ${renderPersonaAlterEgoAvatarKeyOptions(activeAlterEgo.avatarKey)}
+                    </select>
+                </label>
+            `;
+        }
+
+        if (activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.IMAGE_FILE) {
+            return `
+                <label class="dsf-alter-ego-control dsf-alter-ego-avatar-file-wrap">
+                    <span class="dsf-label">Upload File</span>
+                    <div class="dsf-image-file-row">
+                        <button id="${UI.PERSONA_ALTER_EGO_IMAGE_FILE_BUTTON_ID}" type="button" class="menu_button">Upload File</button>
+                        <span class="dsf-image-file-name">${escapeTextarea(activeAlterEgo.avatarFileName || 'No upload file selected')}</span>
+                    </div>
+                    <input
+                        id="${UI.PERSONA_ALTER_EGO_IMAGE_FILE_INPUT_ID}"
+                        class="dsf-image-file-input"
+                        type="file"
+                        accept="image/*"
+                    >
+                </label>
+            `;
+        }
+
+        if (activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.LOCAL_FILE) {
+            return `
+                <label class="dsf-alter-ego-control dsf-alter-ego-avatar-local-file-wrap">
+                    <span class="dsf-label">Local File</span>
+                    <div class="dsf-image-file-row">
+                        <input
+                            id="${UI.PERSONA_ALTER_EGO_LOCAL_FILE_PATH_ID}"
+                            class="text_pole"
+                            type="text"
+                            value="${escapeAttribute(activeAlterEgo.avatarLocalPath || '')}"
+                            placeholder="files/example.png or assets/character/example.png"
+                        >
+                        <button id="${UI.PERSONA_ALTER_EGO_LOCAL_FILE_VERIFY_ID}" type="button" class="menu_button">Verify</button>
+                    </div>
+                    <small class="dsf-muted-help">Use a user-data relative path starting with <code>files/</code> or <code>assets/</code>. Example: <code>files/example.png</code> or <code>assets/character/example.png</code>.</small>
+                </label>
+            `;
+        }
+
+        if (
+            activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.URL ||
+            activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.DATA_URL
+        ) {
+            return `
+                <label class="dsf-alter-ego-control dsf-alter-ego-avatar-url-wrap">
+                    <span class="dsf-label">${activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.DATA_URL ? 'Embedded Image Data' : 'Image URL'}</span>
+                    <input
+                        id="${UI.PERSONA_ALTER_EGO_AVATAR_URL_ID}"
+                        class="text_pole"
+                        type="text"
+                        value="${escapeAttribute(avatarUrlValue)}"
+                        placeholder="${activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.DATA_URL ? 'data:image/png;base64,...' : 'https://...'}"
+                    >
+                </label>
+            `;
+        }
+
+        return '';
+    })();
+
+    return `
+        <div class="dsf-alter-ego-header"><span class="dsf-header-label">Alter Ego</span></div>
+
+        <div class="dsf-alter-ego-body">
+            <div class="dsf-alter-ego-preview">
+                <img
+                    id="${UI.PERSONA_ALTER_EGO_AVATAR_PREVIEW_ID}"
+                    src="${escapeAttribute(identity.avatarUrl || '')}"
+                    alt="${escapeAttribute(activeAlterEgo.name || 'Persona Alter Ego')}"
+                >
+            </div>
+
+            <div class="dsf-alter-ego-control-stack">
+                <div class="dsf-alter-ego-current-group">
+                    <label class="dsf-alter-ego-control dsf-alter-ego-current-wrap">
+                        <span class="dsf-label">Current Ego</span>
+                        <select id="${UI.PERSONA_ALTER_EGO_SELECT_ID}" class="text_pole">
+                            ${alterEgoOptions}
+                        </select>
+                    </label>
+
+                    <div class="dsf-alter-ego-actions">
+                        <button id="${UI.PERSONA_ALTER_EGO_CREATE_ID}" type="button" class="menu_button">Create</button>
+                        <button id="${UI.PERSONA_ALTER_EGO_DUPLICATE_ID}" type="button" class="menu_button">Duplicate</button>
+                        <button id="${UI.PERSONA_ALTER_EGO_RENAME_ID}" type="button" class="menu_button">Rename</button>
+                        <button
+                            id="${UI.PERSONA_ALTER_EGO_DELETE_ID}"
+                            type="button"
+                            class="menu_button danger_button"
+                            ${activeAlterEgo.id === ALTER_EGO_BASE_ID ? 'disabled' : ''}
+                            title="${activeAlterEgo.id === ALTER_EGO_BASE_ID ? 'The base persona alter ego cannot be deleted.' : 'Delete this persona alter ego.'}"
+                        >Delete</button>
+                    </div>
+
+                    <div class="dsf-alter-ego-trigger-buttons">
+                        <div class="dsf-keyword-triggers-wrap dsf-persona-alter-ego-keyword-triggers-wrap">
+                            <button id="${UI.PERSONA_ALTER_EGO_KEYWORD_TRIGGERS_BUTTON_ID}" type="button" class="menu_button dsf-keyword-triggers-button">Keyword Triggers</button>
+                            <div class="dsf-keyword-triggers-menu dsf-persona-alter-ego-keyword-triggers-menu">
+                                <div class="dsf-menu-close-row"><button type="button" class="menu_button dsf-menu-close" title="Close">×</button></div>
+                                <div class="dsf-keyword-trigger-group">
+                                    <div class="dsf-label">Swap Triggers (Separate by comma, semicolon, or newline).</div>
+                                    <textarea class="text_pole dsf-persona-alter-ego-change-conditions dsf-trigger-textarea" placeholder="Example: I put on my supersuit, I take off my supersuit">${escapeTextarea(activeAlterEgo.changeConditions)}</textarea>
+                                    <div class="dsf-trigger-mode-row">
+                                        <label class="dsf-keyword-mode-wrap" title="Any means at least one persona alter ego trigger must match. All means every persona alter ego trigger must match.">
+                                            <span>Match</span>
+                                            <select class="text_pole dsf-persona-alter-ego-change-keyword-mode">
+                                                <option value="${KEYWORD_MODE.ANY}" ${activeAlterEgo.changeKeywordMode === KEYWORD_MODE.ANY ? 'selected' : ''}>Any</option>
+                                                <option value="${KEYWORD_MODE.ALL}" ${activeAlterEgo.changeKeywordMode === KEYWORD_MODE.ALL ? 'selected' : ''}>All</option>
+                                            </select>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="dsf-triggered-by-wrap dsf-persona-alter-ego-triggered-by-wrap">
+                            <button id="${UI.PERSONA_ALTER_EGO_TRIGGER_SOURCES_BUTTON_ID}" type="button" class="menu_button dsf-triggered-by-button">Trigger Sources</button>
+                            <div class="dsf-triggered-by-menu dsf-persona-alter-ego-triggered-by-menu">
+                                <div class="dsf-menu-close-row"><button type="button" class="menu_button dsf-menu-close" title="Close">×</button></div>
+                                ${alterEgoTriggerSourceOptionsHtml}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dsf-alter-ego-image-group">
+                    <label class="dsf-alter-ego-control dsf-alter-ego-avatar-mode-wrap">
+                        <span class="dsf-label">Image Source</span>
+                        <select id="${UI.PERSONA_ALTER_EGO_AVATAR_MODE_ID}" class="text_pole">
+                            ${renderPersonaAlterEgoAvatarModeOptions(activeAlterEgo.avatarMode)}
+                        </select>
+                    </label>
+
+                    ${imageSourceSpecificControl}
+                </div>
+            </div>
+        </div>
+    `;
+}
 
 function renderPanel() {
     const characterId = getActiveCharacterId();
@@ -6216,6 +8538,12 @@ function renderPanel() {
             targetScope: TARGET_SCOPE.CHARACTER,
         })).join('')
         : '<div class="dsf-empty">No Character Dynamic Fields yet.</div>';
+
+    const $alterEgoContainer = $(`#${UI.ALTER_EGO_ROW_ID}`);
+
+    if ($alterEgoContainer.length) {
+        $alterEgoContainer.html(renderAlterEgoControlsHtml(state));
+    }
 
     $panel.html(`
         <div class="dsf-fields" data-target-scope="${TARGET_SCOPE.CHARACTER}">
@@ -6233,8 +8561,13 @@ function renderPanel() {
 
 function renderPersonaPanel() {
     const personaId = getActivePersonaId();
-    const state = personaId ? readPersonaState(personaId) : createOutOfBoxPersonaState();
+    const state = personaId ? readPersonaState(personaId) : createOutOfBoxPersonaState(personaId);
     const $panel = $(`#${UI.PERSONA_PANEL_ID}`);
+    const $alterEgoContainer = $(`#${UI.PERSONA_ALTER_EGO_ROW_ID}`);
+
+    if ($alterEgoContainer.length) {
+        $alterEgoContainer.html(renderPersonaAlterEgoControlsHtml(state));
+    }
 
     if (!$panel.length) {
         return;
@@ -6286,6 +8619,7 @@ function renderFieldHtml(field, index = 0, { targetScope = TARGET_SCOPE.CHARACTE
                 <div class="dsf-trigger-actions-wrap">
                     <button type="button" class="menu_button dsf-trigger-actions-button">Trigger Actions</button>
                     <div class="dsf-trigger-actions-menu">
+                        <div class="dsf-menu-close-row"><button type="button" class="menu_button dsf-menu-close" title="Close">×</button></div>
                         <div class="dsf-label">Actions</div>
                         <textarea class="text_pole dsf-trigger-action-instruction" placeholder="Example: I transform into a werewolf.">${escapeTextarea(normalized.triggerActionInstruction)}</textarea>
                     </div>
@@ -6327,6 +8661,7 @@ function renderFieldHtml(field, index = 0, { targetScope = TARGET_SCOPE.CHARACTE
                     <div class="dsf-keyword-triggers-wrap">
                         <button type="button" class="menu_button dsf-keyword-triggers-button">Keyword Triggers</button>
                         <div class="dsf-keyword-triggers-menu">
+                            <div class="dsf-menu-close-row"><button type="button" class="menu_button dsf-menu-close" title="Close">×</button></div>
                             <div class="dsf-keyword-trigger-group">
                                 <div class="dsf-label">Activating Triggers (Separate by comma, semicolon, or newline).</div>
                                 <textarea class="text_pole dsf-activating-triggers dsf-trigger-textarea" placeholder="Example: Intro, Pre-Reveal, EVOLUTION_STAGE: Pre-War Arc">${escapeTextarea(normalized.activatingTriggers)}</textarea>
@@ -6378,6 +8713,7 @@ function renderFieldHtml(field, index = 0, { targetScope = TARGET_SCOPE.CHARACTE
                     <div class="dsf-triggered-by-wrap">
                         <button type="button" class="menu_button dsf-triggered-by-button">Trigger Sources</button>
                         <div class="dsf-triggered-by-menu">
+                            <div class="dsf-menu-close-row"><button type="button" class="menu_button dsf-menu-close" title="Close">×</button></div>
                             ${triggerSourceOptionsHtml}
                         </div>
                     </div>
@@ -6518,6 +8854,305 @@ function deleteAllDynamicFieldsForCurrentCharacter() {
     notify('success', 'Deleted all Character Dynamic Fields for this character.');
 }
 
+
+async function getAlterEgoNameFromUser(title, defaultValue = '') {
+    const ctx = getContext();
+
+    if (typeof ctx?.callGenericPopup === 'function' && ctx?.POPUP_TYPE) {
+        const result = await ctx.callGenericPopup(`<h3>${escapeTextarea(title)}</h3>`, ctx.POPUP_TYPE.INPUT, defaultValue);
+        return String(result || '').trim();
+    }
+
+    return String(window.prompt(title, defaultValue) || '').trim();
+}
+
+function bindAlterEgoHandlers() {
+    $(document)
+        .off(`change.${MODULE_NAME}`, `#${UI.ALTER_EGO_SELECT_ID}`)
+        .on(`change.${MODULE_NAME}`, `#${UI.ALTER_EGO_SELECT_ID}`, function onAlterEgoSelected() {
+            const requestedId = String(this.value || '').trim();
+
+            updateState((state) => {
+                if (!state.alterEgos.some((alterEgo) => alterEgo.id === requestedId)) {
+                    return;
+                }
+
+                state.activeAlterEgoId = requestedId;
+                state.fields = getActiveAlterEgoFields(state);
+            }, { rerender: true, syncPromptManager: true, applyIdentity: true });
+        });
+
+    $(document)
+        .off(`click.${MODULE_NAME}`, `#${UI.ALTER_EGO_CREATE_ID}`)
+        .on(`click.${MODULE_NAME}`, `#${UI.ALTER_EGO_CREATE_ID}`, async function onCreateAlterEgoClicked() {
+            const name = await getAlterEgoNameFromUser('Create Alter Ego', 'New Alter Ego');
+
+            if (!name) {
+                return;
+            }
+
+            updateState((state) => {
+                const next = createBlankAlterEgo(state.alterEgos, { name });
+                state.alterEgos.push(next);
+                state.activeAlterEgoId = next.id;
+                state.fields = next.fields;
+            }, { rerender: true, syncPromptManager: true, applyIdentity: true });
+        });
+
+    $(document)
+        .off(`click.${MODULE_NAME}`, `#${UI.ALTER_EGO_DUPLICATE_ID}`)
+        .on(`click.${MODULE_NAME}`, `#${UI.ALTER_EGO_DUPLICATE_ID}`, async function onDuplicateAlterEgoClicked() {
+            const current = getActiveAlterEgo(readState());
+            const name = await getAlterEgoNameFromUser('Duplicate Alter Ego', `${current?.name || 'Alter Ego'} Copy`);
+
+            if (!name) {
+                return;
+            }
+
+            updateState((state) => {
+                const next = createBlankAlterEgo(state.alterEgos, {
+                    name,
+                    fromAlterEgo: getActiveAlterEgo(state),
+                });
+
+                state.alterEgos.push(next);
+                state.activeAlterEgoId = next.id;
+                state.fields = next.fields;
+            }, { rerender: true, syncPromptManager: true, applyIdentity: true });
+        });
+
+    $(document)
+        .off(`click.${MODULE_NAME}`, `#${UI.ALTER_EGO_RENAME_ID}`)
+        .on(`click.${MODULE_NAME}`, `#${UI.ALTER_EGO_RENAME_ID}`, async function onRenameAlterEgoClicked() {
+            const current = getActiveAlterEgo(readState());
+
+            if (!current) {
+                return;
+            }
+
+            const name = await getAlterEgoNameFromUser('Rename Alter Ego', current.name);
+
+            if (!name) {
+                return;
+            }
+
+            updateState((state) => {
+                const alterEgo = getActiveAlterEgo(state);
+                if (alterEgo) alterEgo.name = name;
+            }, { rerender: true, syncPromptManager: true, applyIdentity: true });
+        });
+
+    $(document)
+        .off(`click.${MODULE_NAME}`, `#${UI.ALTER_EGO_DELETE_ID}`)
+        .on(`click.${MODULE_NAME}`, `#${UI.ALTER_EGO_DELETE_ID}`, function onDeleteAlterEgoClicked() {
+            const current = getActiveAlterEgo(readState());
+
+            if (!current || current.id === ALTER_EGO_BASE_ID) {
+                notify('warning', 'The base alter ego cannot be deleted.');
+                return;
+            }
+
+            const confirmed = window.confirm(`Delete alter ego "${current.name}"?\n\nThis removes only this alter ego's Dynamic Fields. It does not delete the character card.`);
+
+            if (!confirmed) {
+                return;
+            }
+
+            updateState((state) => {
+                deleteAlterEgoById(state, current.id);
+            }, { rerender: true, syncPromptManager: true, applyIdentity: true });
+        });
+
+    $(document)
+        .off(`input.${MODULE_NAME}`, '.dsf-alter-ego-change-conditions')
+        .on(`input.${MODULE_NAME}`, '.dsf-alter-ego-change-conditions', function onAlterEgoChangeConditionsChanged() {
+            const value = String(this.value || '');
+
+            updateState((state) => {
+                const alterEgo = getActiveAlterEgo(state);
+
+                if (alterEgo) {
+                    alterEgo.changeConditions = value;
+                }
+            }, {
+                rerender: false,
+                applyIdentity: false,
+                deferTokenEstimate: true,
+                deferSettingsActionState: true,
+            });
+        });
+
+    $(document)
+        .off(`change.${MODULE_NAME}`, '.dsf-alter-ego-change-keyword-mode')
+        .on(`change.${MODULE_NAME}`, '.dsf-alter-ego-change-keyword-mode', function onAlterEgoKeywordModeChanged() {
+            const mode = normalizeKeywordMode(this.value);
+
+            updateState((state) => {
+                const alterEgo = getActiveAlterEgo(state);
+
+                if (alterEgo) {
+                    alterEgo.changeKeywordMode = mode;
+                }
+            }, {
+                rerender: false,
+                applyIdentity: false,
+            });
+        });
+
+    $(document)
+        .off(`change.${MODULE_NAME}`, '.dsf-alter-ego-trigger-source')
+        .on(`change.${MODULE_NAME}`, '.dsf-alter-ego-trigger-source', function onAlterEgoTriggerSourcesChanged() {
+            const selectedSources = $(this)
+                .closest('.dsf-alter-ego-triggered-by-menu')
+                .find('.dsf-alter-ego-trigger-source:checked')
+                .map((_, checkbox) => checkbox.value)
+                .get();
+
+            updateState((state) => {
+                const alterEgo = getActiveAlterEgo(state);
+
+                if (alterEgo) {
+                    alterEgo.triggerSources = normalizeTriggerSources(selectedSources);
+                }
+            }, {
+                rerender: false,
+                applyIdentity: false,
+            });
+        });
+
+    $(document)
+        .off(`change.${MODULE_NAME}`, `#${UI.ALTER_EGO_AVATAR_MODE_ID}`)
+        .on(`change.${MODULE_NAME}`, `#${UI.ALTER_EGO_AVATAR_MODE_ID}`, function onAlterEgoAvatarModeChanged() {
+            const mode = normalizeAlterEgoAvatarMode(this.value);
+
+            updateState((state) => {
+                const alterEgo = getActiveAlterEgo(state);
+                if (alterEgo) alterEgo.avatarMode = mode;
+            }, { rerender: true, applyIdentity: true });
+        });
+
+    $(document)
+        .off(`change.${MODULE_NAME}`, `#${UI.ALTER_EGO_AVATAR_KEY_ID}`)
+        .on(`change.${MODULE_NAME}`, `#${UI.ALTER_EGO_AVATAR_KEY_ID}`, function onAlterEgoAvatarKeyChanged() {
+            const avatarKey = String(this.value || '').trim();
+
+            updateState((state) => {
+                const alterEgo = getActiveAlterEgo(state);
+
+                if (!alterEgo) {
+                    return;
+                }
+
+                alterEgo.avatarMode = ALTER_EGO_AVATAR_MODE.SAME_AVATAR_DIRECTORY;
+                alterEgo.avatarKey = avatarKey;
+            }, { rerender: true, applyIdentity: true });
+        });
+
+    $(document)
+        .off(`input.${MODULE_NAME}`, `#${UI.ALTER_EGO_AVATAR_URL_ID}`)
+        .on(`input.${MODULE_NAME}`, `#${UI.ALTER_EGO_AVATAR_URL_ID}`, function onAlterEgoAvatarUrlChanged() {
+            const value = String(this.value || '').trim();
+
+            updateState((state) => {
+                const alterEgo = getActiveAlterEgo(state);
+
+                if (!alterEgo) {
+                    return;
+                }
+
+                if (alterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.DATA_URL) {
+                    alterEgo.avatarDataUrl = value;
+                } else {
+                    alterEgo.avatarUrl = value;
+                }
+            }, {
+                rerender: false,
+                applyIdentity: false,
+                deferTokenEstimate: true,
+                deferSettingsActionState: true,
+            });
+
+            scheduleActiveAlterEgoVisualIdentityRefresh();
+        });
+
+
+    $(document)
+        .off(`click.${MODULE_NAME}`, `#${UI.ALTER_EGO_IMAGE_FILE_BUTTON_ID}`)
+        .on(`click.${MODULE_NAME}`, `#${UI.ALTER_EGO_IMAGE_FILE_BUTTON_ID}`, function onAlterEgoImageFileButtonClicked(event) {
+            event.preventDefault();
+            $(`#${UI.ALTER_EGO_IMAGE_FILE_INPUT_ID}`).trigger('click');
+        });
+
+    $(document)
+        .off(`change.${MODULE_NAME}`, `#${UI.ALTER_EGO_IMAGE_FILE_INPUT_ID}`)
+        .on(`change.${MODULE_NAME}`, `#${UI.ALTER_EGO_IMAGE_FILE_INPUT_ID}`, async function onAlterEgoImageFileChanged() {
+            const file = this.files?.[0];
+
+            if (!file) {
+                return;
+            }
+
+            try {
+                const dataUrl = await readImageFileAsDataUrl(file);
+
+                updateState((state) => {
+                    const alterEgo = getActiveAlterEgo(state);
+
+                    if (!alterEgo) {
+                        return;
+                    }
+
+                    alterEgo.avatarMode = ALTER_EGO_AVATAR_MODE.IMAGE_FILE;
+                    alterEgo.avatarDataUrl = dataUrl;
+                    alterEgo.avatarFileName = file.name || 'local image';
+                }, { rerender: true, applyIdentity: true });
+            } catch (error) {
+                console.error(`[${MODULE_NAME}] Failed to load Alter Ego image file:`, error);
+                notify('error', `Failed to load image file: ${error?.message ?? error}`);
+            } finally {
+                this.value = '';
+            }
+        });
+
+    $(document)
+        .off(`input.${MODULE_NAME}`, `#${UI.ALTER_EGO_LOCAL_FILE_PATH_ID}`)
+        .on(`input.${MODULE_NAME}`, `#${UI.ALTER_EGO_LOCAL_FILE_PATH_ID}`, function onAlterEgoLocalFilePathChanged() {
+            const value = normalizeLocalImagePath(this.value);
+
+            updateState((state) => {
+                const alterEgo = getActiveAlterEgo(state);
+
+                if (!alterEgo) {
+                    return;
+                }
+
+                alterEgo.avatarMode = ALTER_EGO_AVATAR_MODE.LOCAL_FILE;
+                alterEgo.avatarLocalPath = value;
+            }, {
+                rerender: false,
+                applyIdentity: false,
+                deferTokenEstimate: true,
+                deferSettingsActionState: true,
+            });
+
+            scheduleActiveAlterEgoVisualIdentityRefresh();
+        });
+
+    $(document)
+        .off(`click.${MODULE_NAME}`, `#${UI.ALTER_EGO_LOCAL_FILE_VERIFY_ID}`)
+        .on(`click.${MODULE_NAME}`, `#${UI.ALTER_EGO_LOCAL_FILE_VERIFY_ID}`, async function onAlterEgoLocalFileVerifyClicked(event) {
+            event.preventDefault();
+            const value = normalizeLocalImagePath($(`#${UI.ALTER_EGO_LOCAL_FILE_PATH_ID}`).val());
+
+            try {
+                await probeImageReference(value);
+                notify('success', 'Local image reference loaded successfully.');
+            } catch (error) {
+                notify('warning', error?.message ?? String(error));
+            }
+        });
+}
+
 function bindUiHandlers() {
     $(document)
         .off(`change.${MODULE_NAME}`, `#${UI.SWAP_ID}`)
@@ -6539,11 +9174,13 @@ function bindUiHandlers() {
             }, { rerender: true });
         });
 
+    bindAlterEgoHandlers();
     bindFieldEditHandlers();
     bindFieldActionHandlers();
     bindFieldReorderHandlers();
     bindImportExportHandlers();
 }
+
 
 // -----------------------------------------------------------------------------
 // User Interface Events - Persona Top Bar Controls
@@ -6581,6 +9218,300 @@ function deleteAllDynamicFieldsForCurrentPersona() {
     notify('success', 'Deleted all Persona Dynamic Fields for this persona.');
 }
 
+function bindPersonaAlterEgoHandlers() {
+    $(document)
+        .off(`change.${MODULE_NAME}`, `#${UI.PERSONA_ALTER_EGO_SELECT_ID}`)
+        .on(`change.${MODULE_NAME}`, `#${UI.PERSONA_ALTER_EGO_SELECT_ID}`, function onPersonaAlterEgoSelected() {
+            const requestedId = String(this.value || '').trim();
+
+            updatePersonaState((state) => {
+                if (!state.alterEgos.some((alterEgo) => alterEgo.id === requestedId)) {
+                    return;
+                }
+
+                state.activeAlterEgoId = requestedId;
+                state.fields = getActivePersonaAlterEgoFields(state);
+            }, { rerender: true, syncPromptManager: true });
+
+            refreshActivePersonaAlterEgoVisualIdentity();
+        });
+
+    $(document)
+        .off(`click.${MODULE_NAME}`, `#${UI.PERSONA_ALTER_EGO_CREATE_ID}`)
+        .on(`click.${MODULE_NAME}`, `#${UI.PERSONA_ALTER_EGO_CREATE_ID}`, async function onCreatePersonaAlterEgoClicked() {
+            const name = await getAlterEgoNameFromUser('Create Persona Alter Ego', 'New Alter Ego');
+
+            if (!name) {
+                return;
+            }
+
+            updatePersonaState((state) => {
+                const next = createBlankPersonaAlterEgo(state.alterEgos, { name });
+                state.alterEgos.push(next);
+                state.activeAlterEgoId = next.id;
+                state.fields = next.fields;
+            }, { rerender: true, syncPromptManager: true });
+
+            refreshActivePersonaAlterEgoVisualIdentity();
+        });
+
+    $(document)
+        .off(`click.${MODULE_NAME}`, `#${UI.PERSONA_ALTER_EGO_DUPLICATE_ID}`)
+        .on(`click.${MODULE_NAME}`, `#${UI.PERSONA_ALTER_EGO_DUPLICATE_ID}`, async function onDuplicatePersonaAlterEgoClicked() {
+            const current = getActiveAlterEgo(readPersonaState());
+            const name = await getAlterEgoNameFromUser('Duplicate Persona Alter Ego', `${current?.name || 'Alter Ego'} Copy`);
+
+            if (!name) {
+                return;
+            }
+
+            updatePersonaState((state) => {
+                const next = createBlankPersonaAlterEgo(state.alterEgos, {
+                    name,
+                    fromAlterEgo: getActiveAlterEgo(state),
+                });
+
+                state.alterEgos.push(next);
+                state.activeAlterEgoId = next.id;
+                state.fields = next.fields;
+            }, { rerender: true, syncPromptManager: true });
+
+            refreshActivePersonaAlterEgoVisualIdentity();
+        });
+
+    $(document)
+        .off(`click.${MODULE_NAME}`, `#${UI.PERSONA_ALTER_EGO_RENAME_ID}`)
+        .on(`click.${MODULE_NAME}`, `#${UI.PERSONA_ALTER_EGO_RENAME_ID}`, async function onRenamePersonaAlterEgoClicked() {
+            const current = getActiveAlterEgo(readPersonaState());
+
+            if (!current) {
+                return;
+            }
+
+            const name = await getAlterEgoNameFromUser('Rename Persona Alter Ego', current.name);
+
+            if (!name) {
+                return;
+            }
+
+            updatePersonaState((state) => {
+                const alterEgo = getActiveAlterEgo(state);
+                if (alterEgo) alterEgo.name = name;
+            }, { rerender: true, syncPromptManager: true });
+
+            refreshActivePersonaAlterEgoVisualIdentity();
+        });
+
+    $(document)
+        .off(`click.${MODULE_NAME}`, `#${UI.PERSONA_ALTER_EGO_DELETE_ID}`)
+        .on(`click.${MODULE_NAME}`, `#${UI.PERSONA_ALTER_EGO_DELETE_ID}`, function onDeletePersonaAlterEgoClicked() {
+            const current = getActiveAlterEgo(readPersonaState());
+
+            if (!current || current.id === ALTER_EGO_BASE_ID) {
+                notify('warning', 'The base persona alter ego cannot be deleted.');
+                return;
+            }
+
+            const confirmed = window.confirm(`Delete persona alter ego "${current.name}"?\n\nThis removes only this persona alter ego's Dynamic Fields. It does not delete the SillyTavern persona.`);
+
+            if (!confirmed) {
+                return;
+            }
+
+            updatePersonaState((state) => {
+                deletePersonaAlterEgoById(state, current.id);
+            }, { rerender: true, syncPromptManager: true });
+
+            refreshActivePersonaAlterEgoVisualIdentity();
+        });
+
+    $(document)
+        .off(`input.${MODULE_NAME}`, '.dsf-persona-alter-ego-change-conditions')
+        .on(`input.${MODULE_NAME}`, '.dsf-persona-alter-ego-change-conditions', function onPersonaAlterEgoChangeConditionsChanged() {
+            const value = String(this.value || '');
+
+            updatePersonaState((state) => {
+                const alterEgo = getActiveAlterEgo(state);
+
+                if (alterEgo) {
+                    alterEgo.changeConditions = value;
+                }
+            }, {
+                rerender: false,
+                deferTokenEstimate: true,
+                deferSettingsActionState: true,
+            });
+        });
+
+    $(document)
+        .off(`change.${MODULE_NAME}`, '.dsf-persona-alter-ego-change-keyword-mode')
+        .on(`change.${MODULE_NAME}`, '.dsf-persona-alter-ego-change-keyword-mode', function onPersonaAlterEgoKeywordModeChanged() {
+            const mode = normalizeKeywordMode(this.value);
+
+            updatePersonaState((state) => {
+                const alterEgo = getActiveAlterEgo(state);
+
+                if (alterEgo) {
+                    alterEgo.changeKeywordMode = mode;
+                }
+            }, { rerender: false });
+        });
+
+    $(document)
+        .off(`change.${MODULE_NAME}`, '.dsf-persona-alter-ego-trigger-source')
+        .on(`change.${MODULE_NAME}`, '.dsf-persona-alter-ego-trigger-source', function onPersonaAlterEgoTriggerSourcesChanged() {
+            const selectedSources = $(this)
+                .closest('.dsf-persona-alter-ego-triggered-by-menu')
+                .find('.dsf-persona-alter-ego-trigger-source:checked')
+                .map((_, checkbox) => checkbox.value)
+                .get();
+
+            updatePersonaState((state) => {
+                const alterEgo = getActiveAlterEgo(state);
+
+                if (alterEgo) {
+                    alterEgo.triggerSources = normalizeTriggerSources(selectedSources);
+                }
+            }, { rerender: false });
+        });
+
+    $(document)
+        .off(`change.${MODULE_NAME}`, `#${UI.PERSONA_ALTER_EGO_AVATAR_MODE_ID}`)
+        .on(`change.${MODULE_NAME}`, `#${UI.PERSONA_ALTER_EGO_AVATAR_MODE_ID}`, function onPersonaAlterEgoAvatarModeChanged() {
+            const mode = normalizeAlterEgoAvatarMode(this.value);
+
+            updatePersonaState((state) => {
+                const alterEgo = getActiveAlterEgo(state);
+                if (alterEgo) alterEgo.avatarMode = mode;
+            }, { rerender: true });
+
+            refreshActivePersonaAlterEgoVisualIdentity();
+        });
+
+    $(document)
+        .off(`change.${MODULE_NAME}`, `#${UI.PERSONA_ALTER_EGO_AVATAR_KEY_ID}`)
+        .on(`change.${MODULE_NAME}`, `#${UI.PERSONA_ALTER_EGO_AVATAR_KEY_ID}`, function onPersonaAlterEgoAvatarKeyChanged() {
+            const avatarKey = String(this.value || '').trim();
+
+            updatePersonaState((state) => {
+                const alterEgo = getActiveAlterEgo(state);
+
+                if (!alterEgo) {
+                    return;
+                }
+
+                alterEgo.avatarMode = ALTER_EGO_AVATAR_MODE.SAME_AVATAR_DIRECTORY;
+                alterEgo.avatarKey = avatarKey;
+            }, { rerender: true });
+
+            refreshActivePersonaAlterEgoVisualIdentity();
+        });
+
+    $(document)
+        .off(`input.${MODULE_NAME}`, `#${UI.PERSONA_ALTER_EGO_AVATAR_URL_ID}`)
+        .on(`input.${MODULE_NAME}`, `#${UI.PERSONA_ALTER_EGO_AVATAR_URL_ID}`, function onPersonaAlterEgoAvatarUrlChanged() {
+            const value = String(this.value || '').trim();
+
+            updatePersonaState((state) => {
+                const alterEgo = getActiveAlterEgo(state);
+
+                if (!alterEgo) {
+                    return;
+                }
+
+                if (alterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.DATA_URL) {
+                    alterEgo.avatarDataUrl = value;
+                } else {
+                    alterEgo.avatarUrl = value;
+                }
+            }, {
+                rerender: false,
+                deferTokenEstimate: true,
+                deferSettingsActionState: true,
+            });
+
+            scheduleActivePersonaAlterEgoVisualIdentityRefresh();
+        });
+
+
+    $(document)
+        .off(`click.${MODULE_NAME}`, `#${UI.PERSONA_ALTER_EGO_IMAGE_FILE_BUTTON_ID}`)
+        .on(`click.${MODULE_NAME}`, `#${UI.PERSONA_ALTER_EGO_IMAGE_FILE_BUTTON_ID}`, function onPersonaAlterEgoImageFileButtonClicked(event) {
+            event.preventDefault();
+            $(`#${UI.PERSONA_ALTER_EGO_IMAGE_FILE_INPUT_ID}`).trigger('click');
+        });
+
+    $(document)
+        .off(`change.${MODULE_NAME}`, `#${UI.PERSONA_ALTER_EGO_IMAGE_FILE_INPUT_ID}`)
+        .on(`change.${MODULE_NAME}`, `#${UI.PERSONA_ALTER_EGO_IMAGE_FILE_INPUT_ID}`, async function onPersonaAlterEgoImageFileChanged() {
+            const file = this.files?.[0];
+
+            if (!file) {
+                return;
+            }
+
+            try {
+                const dataUrl = await readImageFileAsDataUrl(file);
+
+                updatePersonaState((state) => {
+                    const alterEgo = getActiveAlterEgo(state);
+
+                    if (!alterEgo) {
+                        return;
+                    }
+
+                    alterEgo.avatarMode = ALTER_EGO_AVATAR_MODE.IMAGE_FILE;
+                    alterEgo.avatarDataUrl = dataUrl;
+                    alterEgo.avatarFileName = file.name || 'local image';
+                }, { rerender: true });
+
+                refreshActivePersonaAlterEgoVisualIdentity();
+            } catch (error) {
+                console.error(`[${MODULE_NAME}] Failed to load Persona Alter Ego image file:`, error);
+                notify('error', `Failed to load image file: ${error?.message ?? error}`);
+            } finally {
+                this.value = '';
+            }
+        });
+
+    $(document)
+        .off(`input.${MODULE_NAME}`, `#${UI.PERSONA_ALTER_EGO_LOCAL_FILE_PATH_ID}`)
+        .on(`input.${MODULE_NAME}`, `#${UI.PERSONA_ALTER_EGO_LOCAL_FILE_PATH_ID}`, function onPersonaAlterEgoLocalFilePathChanged() {
+            const value = normalizeLocalImagePath(this.value);
+
+            updatePersonaState((state) => {
+                const alterEgo = getActiveAlterEgo(state);
+
+                if (!alterEgo) {
+                    return;
+                }
+
+                alterEgo.avatarMode = ALTER_EGO_AVATAR_MODE.LOCAL_FILE;
+                alterEgo.avatarLocalPath = value;
+            }, {
+                rerender: false,
+                deferTokenEstimate: true,
+                deferSettingsActionState: true,
+            });
+
+            scheduleActivePersonaAlterEgoVisualIdentityRefresh();
+        });
+
+    $(document)
+        .off(`click.${MODULE_NAME}`, `#${UI.PERSONA_ALTER_EGO_LOCAL_FILE_VERIFY_ID}`)
+        .on(`click.${MODULE_NAME}`, `#${UI.PERSONA_ALTER_EGO_LOCAL_FILE_VERIFY_ID}`, async function onPersonaAlterEgoLocalFileVerifyClicked(event) {
+            event.preventDefault();
+            const value = normalizeLocalImagePath($(`#${UI.PERSONA_ALTER_EGO_LOCAL_FILE_PATH_ID}`).val());
+
+            try {
+                await probeImageReference(value);
+                notify('success', 'Local image reference loaded successfully.');
+            } catch (error) {
+                notify('warning', error?.message ?? String(error));
+            }
+        });
+}
+
 function bindPersonaUiHandlers() {
     $(document)
         .off(`change.${MODULE_NAME}`, `#${UI.PERSONA_SWAP_ID}`)
@@ -6602,6 +9533,7 @@ function bindPersonaUiHandlers() {
             }, { rerender: true });
         });
 
+    bindPersonaAlterEgoHandlers();
     bindFieldEditHandlers();
     bindFieldActionHandlers();
     bindFieldReorderHandlers();
@@ -6645,7 +9577,7 @@ function bindFieldEditHandlers() {
             updateStateForTargetScope(targetScope, (state) => {
                 const field = findField(state, fieldId);
                 if (field) field.name = this.value;
-            }, { rerender: false });
+            }, FIELD_EDIT_INPUT_UPDATE_OPTIONS);
         });
 
     $(document)
@@ -6658,7 +9590,7 @@ function bindFieldEditHandlers() {
             updateStateForTargetScope(targetScope, (state) => {
                 const field = findField(state, fieldId);
                 if (field) field.activatingTriggers = this.value;
-            }, { rerender: false });
+            }, FIELD_EDIT_INPUT_UPDATE_OPTIONS);
         });
 
     $(document)
@@ -6671,7 +9603,7 @@ function bindFieldEditHandlers() {
             updateStateForTargetScope(targetScope, (state) => {
                 const field = findField(state, fieldId);
                 if (field) field.enablingTriggers = this.value;
-            }, { rerender: false });
+            }, FIELD_EDIT_INPUT_UPDATE_OPTIONS);
         });
 
     $(document)
@@ -6684,7 +9616,7 @@ function bindFieldEditHandlers() {
             updateStateForTargetScope(targetScope, (state) => {
                 const field = findField(state, fieldId);
                 if (field) field.disablingTriggers = this.value;
-            }, { rerender: false });
+            }, FIELD_EDIT_INPUT_UPDATE_OPTIONS);
         });
 
     $(document)
@@ -6759,7 +9691,7 @@ function bindFieldEditHandlers() {
             updateState((state) => {
                 const field = findField(state, fieldId);
                 if (field) field.triggerActionInstruction = this.value;
-            }, { rerender: false });
+            }, FIELD_EDIT_INPUT_UPDATE_OPTIONS);
         });
 
     $(document)
@@ -6772,7 +9704,7 @@ function bindFieldEditHandlers() {
             updateStateForTargetScope(targetScope, (state) => {
                 const field = findField(state, fieldId);
                 if (field) field.content = this.value;
-            }, { rerender: false });
+            }, FIELD_EDIT_INPUT_UPDATE_OPTIONS);
         });
 }
 
@@ -7187,11 +10119,25 @@ function toggleSiblingFieldMenu(button, menuSelector) {
     }
 }
 
+function getDynamicFieldsOpenMenuSelector() {
+    return [
+        `#${UI.IMPORT_MENU_ID}.dsf-menu-open`,
+        `#${UI.EXPORT_MENU_ID}.dsf-menu-open`,
+        `#${UI.PERSONA_IMPORT_MENU_ID}.dsf-menu-open`,
+        `#${UI.PERSONA_EXPORT_MENU_ID}.dsf-menu-open`,
+        '.dsf-keyword-triggers-menu.dsf-menu-open',
+        '.dsf-trigger-actions-menu.dsf-menu-open',
+        '.dsf-triggered-by-menu.dsf-menu-open',
+    ].join(', ');
+}
+
 function isDynamicFieldsMenuTarget(target) {
-    const $target = $(target);
+    if (!(target instanceof Element)) {
+        return false;
+    }
 
     return Boolean(
-        $target.closest([
+        target.closest([
             '.dsf-menu-wrap',
             '.dsf-menu',
             '.dsf-keyword-triggers-wrap',
@@ -7203,8 +10149,43 @@ function isDynamicFieldsMenuTarget(target) {
             '.dsf-keyword-triggers-button',
             '.dsf-trigger-actions-button',
             '.dsf-triggered-by-button',
-        ].join(', ')).length,
+            '.dsf-menu-close',
+            '.dsf-menu-close-row',
+            '.dsf-menu-open',
+        ].join(', ')),
     );
+}
+
+function shouldCloseDynamicFieldsMenusFromEvent(event) {
+    const openMenus = Array.from(document.querySelectorAll(getDynamicFieldsOpenMenuSelector()));
+
+    if (!openMenus.length) {
+        return false;
+    }
+
+    const target = event?.target instanceof Element ? event.target : null;
+
+    if (!target) {
+        return false;
+    }
+
+    const path = typeof event.composedPath === 'function'
+        ? event.composedPath()
+        : [];
+
+    const touchedMenuSurface = path.some((node) => {
+        if (!(node instanceof Element)) {
+            return false;
+        }
+
+        return isDynamicFieldsMenuTarget(node);
+    });
+
+    if (touchedMenuSurface || isDynamicFieldsMenuTarget(target)) {
+        return false;
+    }
+
+    return true;
 }
 
 function stopMenuEvent(event) {
@@ -7240,6 +10221,18 @@ function bindImportExportHandlers() {
         .on(`click.${MODULE_NAME}`, '.dsf-keyword-triggers-menu, .dsf-trigger-actions-menu, .dsf-triggered-by-menu', function onFieldMenuClicked(event) {
             event.stopPropagation();
             event.stopImmediatePropagation();
+        });
+
+    $(document)
+        .off(`click.${MODULE_NAME}`, '.dsf-menu-close')
+        .on(`click.${MODULE_NAME}`, '.dsf-menu-close', function onMenuCloseClicked(event) {
+            stopMenuEvent(event);
+            $(this).closest('.dsf-menu, .dsf-keyword-triggers-menu, .dsf-trigger-actions-menu, .dsf-triggered-by-menu')
+                .removeClass('dsf-menu-open')
+                .css({
+                    '--dsf-menu-left': '',
+                    '--dsf-menu-top': '',
+                });
         });
 
     $(document)
@@ -7360,9 +10353,9 @@ function bindImportExportHandlers() {
         .on(`change.${MODULE_NAME}`, `#${UI.PERSONA_DYNAMIC_FIELDS_IMPORT_FILE_ID}`, handlePersonaDynamicFieldsImportFileSelected);
 
     $(document)
-        .off(`click.${MODULE_NAME}.menus`)
-        .on(`click.${MODULE_NAME}.menus`, function onDocumentClickedForMenus(event) {
-            if (isDynamicFieldsMenuTarget(event.target)) {
+        .off(`pointerdown.${MODULE_NAME}.menus click.${MODULE_NAME}.menus`)
+        .on(`pointerdown.${MODULE_NAME}.menus click.${MODULE_NAME}.menus`, function onDocumentPressedForMenus(event) {
+            if (!shouldCloseDynamicFieldsMenusFromEvent(event)) {
                 return;
             }
 
@@ -7370,10 +10363,7 @@ function bindImportExportHandlers() {
         });
 
     $(window)
-        .off(`resize.${MODULE_NAME}.menus scroll.${MODULE_NAME}.menus`)
-        .on(`resize.${MODULE_NAME}.menus scroll.${MODULE_NAME}.menus`, function onViewportChangedForMenus() {
-            closeImportExportMenus();
-        });
+        .off(`resize.${MODULE_NAME}.menus scroll.${MODULE_NAME}.menus`);
 }
 
 // ============================================================================
@@ -7434,6 +10424,10 @@ function beginGenerationLifecycle(characterId, personaId = getActivePersonaId())
         ? undefined
         : normalizeCharacterId(characterId);
     const normalizedPersonaId = normalizePersonaId(personaId);
+
+    if (normalizedCharacterId !== undefined) {
+        applyActiveAlterEgoNameToSillyTavern(normalizedCharacterId);
+    }
 
     // SillyTavern may build/prepare prompt data more than once during one logical
     // generation. Reusing the active lifecycle prevents Character Trigger Action
@@ -7716,6 +10710,7 @@ function mountPersonaUiIfMissing() {
 
     if (isPersonaUiMounted()) {
         applyPersonaUiVisibility();
+        refreshActivePersonaAlterEgoVisualIdentity();
         updatePersonaTokenEstimate();
         updateSettingsActionState();
         return;
@@ -7771,10 +10766,13 @@ function ensurePersonaDomObserver() {
 function refreshCharacterUiAfterStateChange() {
     closeDynamicFieldsMenusForHardRefresh();
 
+    invalidateSelectableAvatarCharactersCache();
     stateCache.clear();
     clearAllPreparedPrompts();
     clearGenerationLifecycle();
     restoreSuppressedDescriptions();
+    applyActiveAlterEgoNameToSillyTavern();
+    refreshActiveAlterEgoVisualIdentity();
 
     if (typeof scheduleMount === 'function') {
         scheduleMount();
@@ -7787,6 +10785,8 @@ function refreshCharacterUiAfterStateChange() {
 }
 
 function refreshPersonaUiAfterPersonaChanged() {
+    invalidateSelectablePersonaAvatarsCache();
+
     // Persona changes are a real identity/context switch. Closing menus here is
     // correct because the open field editor may now belong to a different persona.
     closeDynamicFieldsMenusForHardRefresh();
@@ -7798,6 +10798,7 @@ function refreshPersonaUiAfterPersonaChanged() {
     if (isPersonaUiMounted()) {
         renderPersonaPanel();
         applyPersonaUiVisibility();
+        refreshActivePersonaAlterEgoVisualIdentity();
         updatePersonaTokenEstimate();
     } else {
         schedulePersonaMountIfMissing();
@@ -7810,10 +10811,15 @@ function refreshPersonaUiAfterPersonaChanged() {
 function refreshAllUiAfterStateChange() {
     closeDynamicFieldsMenusForHardRefresh();
 
+    invalidateSelectableAvatarCharactersCache();
+    invalidateSelectablePersonaAvatarsCache();
     clearAllStateCaches();
     clearAllPreparedPrompts();
     clearGenerationLifecycle();
     restoreSuppressedDescriptions();
+    applyActiveAlterEgoNameToSillyTavern();
+    refreshActiveAlterEgoVisualIdentity();
+    refreshActivePersonaAlterEgoVisualIdentity();
 
     scheduleAllMountsIfMissing();
 
@@ -7881,6 +10887,9 @@ function registerEvents() {
         mountPersonaUiIfMissing();
         updateSettingsActionState();
         syncPromptManagerWithActiveStates();
+        applyActiveAlterEgoNameToSillyTavern();
+        refreshActiveAlterEgoVisualIdentity();
+        refreshActivePersonaAlterEgoVisualIdentity();
     };
 
     registerEventHandler(eventSource, eventTypes, 'APP_INITIALIZED', () => {
@@ -7904,20 +10913,68 @@ function registerEvents() {
         refreshCharacterUiAfterStateChange();
     });
 
+    ['CHARACTER_DELETED', 'CHARACTER_DUPLICATED', 'CHARACTER_RENAMED'].forEach((eventName) => {
+        registerEventHandler(eventSource, eventTypes, eventName, () => {
+            invalidateSelectableAvatarCharactersCache();
+        });
+    });
+
     registerEventHandler(eventSource, eventTypes, 'PERSONA_CHANGED', () => {
         refreshPersonaUiAfterPersonaChanged();
     });
 
-    registerEventHandler(eventSource, eventTypes, 'MESSAGE_SENT', () => {
+    ['PERSONA_CREATED', 'PERSONA_UPDATED', 'PERSONA_RENAMED', 'PERSONA_DELETED'].forEach((eventName) => {
+        registerEventHandler(eventSource, eventTypes, eventName, () => {
+            invalidateSelectablePersonaAvatarsCache();
+        });
+    });
+
+    registerEventHandler(eventSource, eventTypes, 'MESSAGE_SENT', (messageId) => {
+        const ctx = getContext();
+        const resolvedMessageId = Number.isFinite(Number(messageId)) ? Number(messageId) : ((ctx?.chat?.length ?? 1) - 1);
+        const message = ctx?.chat?.[resolvedMessageId];
+
+        if (isUserMessage(message)) {
+            applyPersonaAlterEgoSwapForUserMessage(resolvedMessageId, message);
+            stampMessageWithActivePersonaAlterEgoIdentity(resolvedMessageId, message);
+        }
+
         runAfterSettingsSettle(refreshTokenEstimatesAfterContextChange, 50);
     });
 
-    registerEventHandler(eventSource, eventTypes, 'MESSAGE_RECEIVED', () => {
+    registerEventHandler(eventSource, eventTypes, 'MESSAGE_RECEIVED', (messageId) => {
+        const ctx = getContext();
+        const resolvedMessageId = Number.isFinite(Number(messageId)) ? Number(messageId) : ((ctx?.chat?.length ?? 1) - 1);
+        const message = ctx?.chat?.[resolvedMessageId];
+
+        if (isAssistantMessageForCharacter(message)) {
+            stampMessageWithActiveAlterEgoIdentity(resolvedMessageId, message);
+        }
+
         runAfterSettingsSettle(refreshTokenEstimatesAfterContextChange, 50);
     });
 
-    registerEventHandler(eventSource, eventTypes, 'USER_MESSAGE_RENDERED', () => {
+    registerEventHandler(eventSource, eventTypes, 'USER_MESSAGE_RENDERED', (messageId) => {
+        const ctx = getContext();
+        const resolvedMessageId = Number.isFinite(Number(messageId)) ? Number(messageId) : ((ctx?.chat?.length ?? 1) - 1);
+        const message = ctx?.chat?.[resolvedMessageId];
+
+        if (isUserMessage(message)) {
+            applyPersonaAlterEgoSwapForUserMessage(resolvedMessageId, message);
+            stampMessageWithActivePersonaAlterEgoIdentity(resolvedMessageId, message);
+        }
+
         runAfterSettingsSettle(refreshTokenEstimatesAfterContextChange, 50);
+    });
+
+    registerEventHandler(eventSource, eventTypes, 'CHARACTER_MESSAGE_RENDERED', (messageId) => {
+        const ctx = getContext();
+        const resolvedMessageId = Number.isFinite(Number(messageId)) ? Number(messageId) : ((ctx?.chat?.length ?? 1) - 1);
+        const message = ctx?.chat?.[resolvedMessageId];
+
+        if (isAssistantMessageForCharacter(message)) {
+            stampMessageWithActiveAlterEgoIdentity(resolvedMessageId, message);
+        }
     });
 
     registerEventHandler(eventSource, eventTypes, 'GENERATE_AFTER_DATA', onGenerationPromptBuilt);
