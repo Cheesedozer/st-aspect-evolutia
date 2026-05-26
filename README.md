@@ -10,7 +10,7 @@ The goal is to make Characters / Personas cleaner, more stage-aware, and easier 
 
 ## What It Does
 
-- Adds Alter Egos for Characters.
+- Adds Alter Egos for Characters / Personas.
 - Adds a Dynamic Fields mode to the Character editor and Persona editor
 - Hides the native Description field while Dynamic Fields mode is active
 - Stores Dynamic Fields per Character / Persona
@@ -54,7 +54,7 @@ The goal is to make Characters / Personas cleaner, more stage-aware, and easier 
 
 ## Alter Egos
 
-Swap between different versions of characters, all through the same character card, manually or via keyword triggers. Each alter ego has its own dynamic fields, so your characters can be who they are meant to be in whatever form they take.
+Swap between different versions of Characters / Personas, all through the same character card or persona, manually or via keyword triggers. Each alter ego has its own dynamic fields, so your Characters / Personas can be who they are meant to be in whatever form they take.
 
 ## Dynamic Fields
 
