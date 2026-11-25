@@ -1099,6 +1099,208 @@ function readImageFileAsDataUrl(file) {
 }
 
 
+// -----------------------------------------------------------------------------
+// Alter Ego images as user files
+// -----------------------------------------------------------------------------
+// Images are stored once in the user's Files folder (data/<user>/user/files)
+// and referenced by path. Chat messages never carry image data.
+
+const dataUrlFileCache = new Map();
+
+function toServedFileUrl(filePath) {
+    const path = String(filePath || '').trim();
+
+    if (!path) {
+        return '';
+    }
+
+    return path.startsWith('/') || /^[a-z]+:/i.test(path) ? path : `/${path}`;
+}
+
+function isDataUrl(value) {
+    return typeof value === 'string' && value.startsWith('data:');
+}
+
+async function hashText(text) {
+    try {
+        const bytes = new TextEncoder().encode(text);
+        const digest = await crypto.subtle.digest('SHA-256', bytes);
+        return [...new Uint8Array(digest)].slice(0, 12).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    } catch {
+        return getTriggerOccurrenceKey(text).replace(/[^a-z0-9]/gi, '');
+    }
+}
+
+// Uploads a data: URL to the user's Files folder (deduplicated by content hash)
+// and returns its path, or '' when the upload is not possible.
+function uploadDataUrlAsUserFile(dataUrl) {
+    if (!isDataUrl(dataUrl)) {
+        return Promise.resolve('');
+    }
+
+    if (dataUrlFileCache.has(dataUrl)) {
+        return dataUrlFileCache.get(dataUrl);
+    }
+
+    const promise = (async () => {
+        const match = dataUrl.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i);
+
+        if (!match) {
+            return '';
+        }
+
+        const extension = ({ 'image/jpeg': 'jpg', 'image/svg+xml': 'svg' })[match[1].toLowerCase()] || match[1].split('/')[1].replace(/[^a-z0-9]/gi, '').toLowerCase() || 'png';
+        const name = `aspect-evolutia-image-${await hashText(dataUrl)}.${extension}`;
+        const ctx = getContext();
+        const headers = typeof ctx?.getRequestHeaders === 'function' ? ctx.getRequestHeaders() : { 'Content-Type': 'application/json' };
+        const response = await fetch('/api/files/upload', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ name, data: match[2] }),
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const result = await response.json();
+        return String(result?.path || '');
+    })().catch((error) => {
+        console.warn(`[${MODULE_NAME}] Could not store image as a file:`, error);
+        dataUrlFileCache.delete(dataUrl);
+        return '';
+    });
+
+    dataUrlFileCache.set(dataUrl, promise);
+    return promise;
+}
+
+// Returns a URL safe to store in a chat message. Data URLs are replaced by the
+// stored file (uploaded on first use); `onReady` is called if that happens later.
+function getMessageSafeAvatarUrl(avatarUrl, onReady) {
+    if (!isDataUrl(avatarUrl)) {
+        return avatarUrl;
+    }
+
+    uploadDataUrlAsUserFile(avatarUrl).then((path) => {
+        if (path) {
+            onReady?.(toServedFileUrl(path));
+        }
+    });
+
+    return '';
+}
+
+// One-time migration of chat messages stamped by earlier versions with image
+// data in force_avatar / extra.aspectEvolutia. SillyTavern's automatic chat
+// backups keep the previous file.
+async function migrateChatImageData() {
+    const chat = getLiveChat();
+    let changed = false;
+
+    for (const message of chat) {
+        const extra = message?.extra?.[ALTER_EGO_EXTRA_KEY];
+        const stamps = [extra?.[ALTER_EGO_MESSAGE_KEY], extra?.personaAlterEgo].filter(Boolean);
+        const targets = [message?.force_avatar, ...stamps.map((stamp) => stamp.avatarUrl)].filter(isDataUrl);
+
+        if (!targets.length) {
+            continue;
+        }
+
+        for (const dataUrl of new Set(targets)) {
+            const path = toServedFileUrl(await uploadDataUrlAsUserFile(dataUrl));
+
+            if (!path) {
+                continue;
+            }
+
+            if (message.force_avatar === dataUrl) {
+                message.force_avatar = path;
+            }
+
+            for (const stamp of stamps) {
+                if (stamp.avatarUrl === dataUrl) {
+                    stamp.avatarUrl = path;
+                }
+            }
+
+            for (const swipeInfo of message.swipe_info || []) {
+                const swipeExtra = swipeInfo?.extra?.[ALTER_EGO_EXTRA_KEY];
+
+                for (const stamp of [swipeExtra?.[ALTER_EGO_MESSAGE_KEY], swipeExtra?.personaAlterEgo].filter(Boolean)) {
+                    if (stamp.avatarUrl === dataUrl) {
+                        stamp.avatarUrl = path;
+                    }
+                }
+            }
+
+            changed = true;
+        }
+    }
+
+    if (changed) {
+        await getContext()?.saveChat?.();
+        notify('info', 'Aspect: Evolutia moved alter ego images out of this chat file.');
+    }
+}
+
+// One-time migration of uploaded alter ego images (IMAGE_FILE mode) stored as
+// data URLs on the card or persona. 'Embedded Image Data' stays embedded.
+async function migrateAlterEgoImageData(scope, entityId) {
+    const cardState = scope === TARGET_SCOPE.PERSONA ? readPersonaCardState(entityId) : readCardState(entityId);
+    const pending = (cardState.alterEgos || []).filter((alterEgo) => alterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.IMAGE_FILE && isDataUrl(alterEgo.avatarDataUrl) && !alterEgo.avatarFilePath);
+
+    if (!pending.length) {
+        return;
+    }
+
+    const paths = new Map();
+
+    for (const alterEgo of pending) {
+        paths.set(alterEgo.id, await uploadDataUrlAsUserFile(alterEgo.avatarDataUrl));
+    }
+
+    const apply = (state) => {
+        for (const alterEgo of state.alterEgos || []) {
+            const path = paths.get(alterEgo.id);
+
+            if (path && alterEgo.avatarDataUrl) {
+                alterEgo.avatarFilePath = path;
+                alterEgo.avatarDataUrl = '';
+            }
+        }
+    };
+
+    if (scope === TARGET_SCOPE.PERSONA) {
+        const state = readPersonaCardState(entityId);
+        apply(state);
+        schedulePersonaSave(entityId, state);
+    } else {
+        const state = readCardState(entityId);
+        apply(state);
+        scheduleSave(entityId, state);
+    }
+}
+
+async function migrateImageDataForCurrentChat() {
+    try {
+        const characterId = getActiveCharacterId();
+        const personaId = getActivePersonaId();
+
+        if (characterId !== undefined) {
+            await migrateAlterEgoImageData(TARGET_SCOPE.CHARACTER, characterId);
+        }
+
+        if (personaId) {
+            await migrateAlterEgoImageData(TARGET_SCOPE.PERSONA, personaId);
+        }
+
+        await migrateChatImageData();
+    } catch (error) {
+        console.warn(`[${MODULE_NAME}] Image migration skipped:`, error);
+    }
+}
+
 function normalizeLocalImagePath(path) {
     return String(path ?? '').trim();
 }
@@ -1157,7 +1359,7 @@ function resolvePersonaAlterEgoAvatarUrl(alterEgo, personaId = getMacroPersonaId
             return getPersonaAvatarThumbnailUrl(normalized.avatarKey, { bustCache });
 
         case ALTER_EGO_AVATAR_MODE.IMAGE_FILE:
-            return normalized.avatarDataUrl || getPersonaAvatarThumbnailUrl(getNativePersonaAvatarKey(normalizedPersonaId), { bustCache });
+            return toServedFileUrl(normalized.avatarFilePath) || normalized.avatarDataUrl || getPersonaAvatarThumbnailUrl(getNativePersonaAvatarKey(normalizedPersonaId), { bustCache });
 
         case ALTER_EGO_AVATAR_MODE.LOCAL_FILE:
             return normalized.avatarLocalPath || getPersonaAvatarThumbnailUrl(getNativePersonaAvatarKey(normalizedPersonaId), { bustCache });
@@ -1699,6 +1901,7 @@ function createBlankAlterEgo(existingAlterEgos = [], { characterId = getActiveCh
         avatarKey: source?.avatarKey ?? '',
         avatarUrl: source?.avatarUrl ?? '',
         avatarDataUrl: source?.avatarDataUrl ?? '',
+        avatarFilePath: source?.avatarFilePath ?? '',
         avatarFileName: source?.avatarFileName ?? '',
         avatarLocalPath: source?.avatarLocalPath ?? '',
         swapMode: source?.swapMode ?? ALTER_EGO_SWAP_MODE.MANUAL,
@@ -1723,6 +1926,7 @@ function normalizeAlterEgo(alterEgo = {}, { fallbackName = ALTER_EGO_DEFAULT_NAM
     const avatarKey = String(alterEgo.avatarKey ?? alterEgo.avatar ?? '').trim();
     const avatarUrl = String(alterEgo.avatarUrl ?? alterEgo.imageUrl ?? '').trim();
     const avatarDataUrl = String(alterEgo.avatarDataUrl ?? alterEgo.dataUrl ?? '').trim();
+    const avatarFilePath = String(alterEgo.avatarFilePath ?? '').trim();
     const avatarFileName = String(alterEgo.avatarFileName ?? alterEgo.imageFileName ?? alterEgo.fileName ?? '').trim();
     const avatarLocalPath = normalizeLocalImagePath(alterEgo.avatarLocalPath ?? alterEgo.localFilePath ?? alterEgo.localPath ?? '');
     const fields = Array.isArray(alterEgo.fields)
@@ -1736,6 +1940,7 @@ function normalizeAlterEgo(alterEgo = {}, { fallbackName = ALTER_EGO_DEFAULT_NAM
         avatarKey: avatarMode === ALTER_EGO_AVATAR_MODE.SAME_AVATAR_DIRECTORY ? avatarKey || fallbackAvatarKey : avatarKey,
         avatarUrl,
         avatarDataUrl,
+        avatarFilePath,
         avatarFileName,
         avatarLocalPath,
         swapMode: normalizeAlterEgoSwapMode(alterEgo.swapMode),
@@ -1837,6 +2042,7 @@ function createBlankPersonaAlterEgo(existingAlterEgos = [], { personaId = getAct
         avatarKey: source?.avatarKey ?? '',
         avatarUrl: source?.avatarUrl ?? '',
         avatarDataUrl: source?.avatarDataUrl ?? '',
+        avatarFilePath: source?.avatarFilePath ?? '',
         avatarFileName: source?.avatarFileName ?? '',
         avatarLocalPath: source?.avatarLocalPath ?? '',
         swapMode: source?.swapMode ?? ALTER_EGO_SWAP_MODE.MANUAL,
@@ -1858,6 +2064,7 @@ function normalizePersonaAlterEgo(alterEgo = {}, { fallbackName = ALTER_EGO_DEFA
     const avatarKey = String(alterEgo.avatarKey ?? alterEgo.avatar ?? '').trim();
     const avatarUrl = String(alterEgo.avatarUrl ?? alterEgo.imageUrl ?? '').trim();
     const avatarDataUrl = String(alterEgo.avatarDataUrl ?? alterEgo.dataUrl ?? '').trim();
+    const avatarFilePath = String(alterEgo.avatarFilePath ?? '').trim();
     const avatarFileName = String(alterEgo.avatarFileName ?? alterEgo.imageFileName ?? alterEgo.fileName ?? '').trim();
     const avatarLocalPath = normalizeLocalImagePath(alterEgo.avatarLocalPath ?? alterEgo.localFilePath ?? alterEgo.localPath ?? '');
     const fields = Array.isArray(alterEgo.fields)
@@ -1871,6 +2078,7 @@ function normalizePersonaAlterEgo(alterEgo = {}, { fallbackName = ALTER_EGO_DEFA
         avatarKey: avatarMode === ALTER_EGO_AVATAR_MODE.SAME_AVATAR_DIRECTORY ? avatarKey || fallbackAvatarKey : avatarKey,
         avatarUrl,
         avatarDataUrl,
+        avatarFilePath,
         avatarFileName,
         avatarLocalPath,
         swapMode: normalizeAlterEgoSwapMode(alterEgo.swapMode),
@@ -2267,6 +2475,7 @@ function exportAlterEgoForJson(alterEgo, index = 0) {
         avatarKey: normalized.avatarKey,
         avatarUrl: normalized.avatarUrl,
         avatarDataUrl: normalized.avatarDataUrl,
+        avatarFilePath: normalized.avatarFilePath,
         avatarFileName: normalized.avatarFileName,
         avatarLocalPath: normalized.avatarLocalPath,
         swapMode: normalized.swapMode,
@@ -2289,6 +2498,7 @@ function importAlterEgoFromJson(alterEgo = {}, existingAlterEgos = []) {
         avatarKey: alterEgo.avatarKey,
         avatarUrl: alterEgo.avatarUrl,
         avatarDataUrl: alterEgo.avatarDataUrl,
+        avatarFilePath: alterEgo.avatarFilePath,
         avatarFileName: alterEgo.avatarFileName,
         avatarLocalPath: alterEgo.avatarLocalPath,
         swapMode: alterEgo.swapMode,
@@ -4514,7 +4724,7 @@ function resolveAlterEgoAvatarUrl(alterEgo, characterId = getMacroCharacterId(),
             return getCharacterAvatarThumbnailUrl(normalized.avatarKey, { bustCache });
 
         case ALTER_EGO_AVATAR_MODE.IMAGE_FILE:
-            return normalized.avatarDataUrl || getCharacterAvatarThumbnailUrl(getNativeCharacterAvatarKey(characterId), { bustCache });
+            return toServedFileUrl(normalized.avatarFilePath) || normalized.avatarDataUrl || getCharacterAvatarThumbnailUrl(getNativeCharacterAvatarKey(characterId), { bustCache });
 
         case ALTER_EGO_AVATAR_MODE.LOCAL_FILE:
             return normalized.avatarLocalPath || getCharacterAvatarThumbnailUrl(getNativeCharacterAvatarKey(characterId), { bustCache });
@@ -4650,13 +4860,26 @@ function stampMessageWithActiveAlterEgoIdentity(messageId, message = getContext(
         return false;
     }
 
-    const identity = getActiveAlterEgoIdentity(characterId);
+    let identity = getActiveAlterEgoIdentity(characterId);
 
     if (!identity.name && !identity.avatarUrl) {
         return false;
     }
 
     message.name = identity.name || message.name;
+
+    const safeAvatarUrl = getMessageSafeAvatarUrl(identity.avatarUrl, (fileUrl) => {
+        message.force_avatar = fileUrl;
+
+        if (message.extra?.[ALTER_EGO_EXTRA_KEY]?.[ALTER_EGO_MESSAGE_KEY]) {
+            message.extra[ALTER_EGO_EXTRA_KEY][ALTER_EGO_MESSAGE_KEY].avatarUrl = fileUrl;
+        }
+
+        syncMessageElementIdentity(messageId, { ...identity, avatarUrl: fileUrl });
+        scheduleAlterEgoChatIdentitySave();
+    });
+
+    identity = { ...identity, avatarUrl: safeAvatarUrl };
 
     if (identity.avatarUrl) {
         message.force_avatar = identity.avatarUrl;
@@ -4889,11 +5112,25 @@ function stampMessageWithActivePersonaAlterEgoIdentity(messageId, message = getC
         return false;
     }
 
-    const identity = getActivePersonaAlterEgoIdentity(normalizedPersonaId);
+    let identity = getActivePersonaAlterEgoIdentity(normalizedPersonaId);
 
     if (!identity.name && !identity.avatarUrl) {
         return false;
     }
+
+    identity = {
+        ...identity,
+        avatarUrl: getMessageSafeAvatarUrl(identity.avatarUrl, (fileUrl) => {
+            message.force_avatar = fileUrl;
+
+            if (message.extra?.[ALTER_EGO_EXTRA_KEY]?.personaAlterEgo) {
+                message.extra[ALTER_EGO_EXTRA_KEY].personaAlterEgo.avatarUrl = fileUrl;
+            }
+
+            syncMessageElementIdentity(messageId, { ...identity, avatarUrl: fileUrl });
+            scheduleAlterEgoChatIdentitySave();
+        }),
+    };
 
     message.name = identity.name || message.name;
 
@@ -8461,7 +8698,7 @@ function renderAlterEgoControlsHtml(state) {
         activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.DATA_URL ||
         activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.IMAGE_FILE
     )
-        ? activeAlterEgo.avatarDataUrl
+        ? (activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.IMAGE_FILE && activeAlterEgo.avatarFilePath ? toServedFileUrl(activeAlterEgo.avatarFilePath) : activeAlterEgo.avatarDataUrl)
         : activeAlterEgo.avatarUrl;
     const alterEgoTriggerSources = normalizeTriggerSources(activeAlterEgo.triggerSources);
     const alterEgoTriggerSourceOptionsHtml = Object.values(TRIGGER_SOURCE)
@@ -8646,7 +8883,7 @@ function renderPersonaAlterEgoControlsHtml(state) {
         activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.DATA_URL ||
         activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.IMAGE_FILE
     )
-        ? activeAlterEgo.avatarDataUrl
+        ? (activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.IMAGE_FILE && activeAlterEgo.avatarFilePath ? toServedFileUrl(activeAlterEgo.avatarFilePath) : activeAlterEgo.avatarDataUrl)
         : activeAlterEgo.avatarUrl;
     const alterEgoTriggerSources = normalizeTriggerSources(activeAlterEgo.triggerSources);
     const alterEgoTriggerSourceOptionsHtml = Object.values(TRIGGER_SOURCE)
@@ -9405,6 +9642,7 @@ function bindAlterEgoHandlers() {
 
             try {
                 const dataUrl = await readImageFileAsDataUrl(file);
+                const filePath = await uploadDataUrlAsUserFile(dataUrl);
 
                 updateState((state) => {
                     const alterEgo = getActiveAlterEgo(state);
@@ -9414,7 +9652,9 @@ function bindAlterEgoHandlers() {
                     }
 
                     alterEgo.avatarMode = ALTER_EGO_AVATAR_MODE.IMAGE_FILE;
-                    alterEgo.avatarDataUrl = dataUrl;
+                    // Stored as a file in the user's Files folder; only the path goes on the card.
+                    alterEgo.avatarFilePath = filePath;
+                    alterEgo.avatarDataUrl = filePath ? '' : dataUrl;
                     alterEgo.avatarFileName = file.name || 'local image';
                 }, { rerender: true, applyIdentity: true });
             } catch (error) {
@@ -9763,6 +10003,7 @@ function bindPersonaAlterEgoHandlers() {
 
             try {
                 const dataUrl = await readImageFileAsDataUrl(file);
+                const filePath = await uploadDataUrlAsUserFile(dataUrl);
 
                 updatePersonaState((state) => {
                     const alterEgo = getActiveAlterEgo(state);
@@ -9772,7 +10013,9 @@ function bindPersonaAlterEgoHandlers() {
                     }
 
                     alterEgo.avatarMode = ALTER_EGO_AVATAR_MODE.IMAGE_FILE;
-                    alterEgo.avatarDataUrl = dataUrl;
+                    // Stored as a file in the user's Files folder; only the path goes on the card.
+                    alterEgo.avatarFilePath = filePath;
+                    alterEgo.avatarDataUrl = filePath ? '' : dataUrl;
                     alterEgo.avatarFileName = file.name || 'local image';
                 }, { rerender: true });
 
@@ -11328,6 +11571,7 @@ function registerEvents() {
     window.addEventListener('beforeunload', flushPendingSaves);
 
     registerEventHandler(eventSource, eventTypes, 'CHAT_CHANGED', () => {
+        setTimeout(migrateImageDataForCurrentChat, 500);
         flushPendingSaves();
         pendingRuntimeStamp = null;
         invalidateRuntimeCache();
