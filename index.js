@@ -301,8 +301,6 @@ const PERSONA_TOKEN_COUNTER_SELECTORS = [
 ];
 
 let booted = false;
-let saveTimer = null;
-let personaSaveTimer = null;
 let alterEgoIdentitySaveTimer = null;
 let mountTimer = null;
 let personaMountTimer = null;
@@ -1341,30 +1339,72 @@ function getCurrentPersonaButtonLabel() {
 // SillyTavern Context, Character, and Persona Access - Persona Extension Storage
 // -----------------------------------------------------------------------------
 
-function getPersonaExtensionRoot({ create = false } = {}) {
-    const powerUser = getPowerUserSettings();
+// Persona Dynamic Fields live in extension_settings[MODULE_NAME].personaDynamicFields.
+// Versions up to 1.3.1 stored them in power_user[MODULE_NAME]; that copy is
+// migrated once and left in place (marked migrated) as a backup.
+function getExtensionSettingsRoot({ create = false } = {}) {
+    const extensionSettings = getContext()?.extensionSettings;
 
-    if (!powerUser || typeof powerUser !== 'object') {
+    if (!extensionSettings || typeof extensionSettings !== 'object') {
         return null;
     }
 
-    if (!powerUser[MODULE_NAME] || typeof powerUser[MODULE_NAME] !== 'object') {
+    if (!extensionSettings[MODULE_NAME] || typeof extensionSettings[MODULE_NAME] !== 'object') {
         if (!create) {
             return null;
         }
 
-        powerUser[MODULE_NAME] = {};
+        extensionSettings[MODULE_NAME] = {};
     }
 
-    if (!powerUser[MODULE_NAME][PERSONA_STATE_SETTINGS_KEY] || typeof powerUser[MODULE_NAME][PERSONA_STATE_SETTINGS_KEY] !== 'object') {
+    return extensionSettings[MODULE_NAME];
+}
+
+function migrateLegacyPersonaStorage() {
+    const powerUser = getPowerUserSettings();
+    const legacyRoot = powerUser?.[MODULE_NAME];
+    const legacyRecords = legacyRoot?.[PERSONA_STATE_SETTINGS_KEY];
+
+    if (!legacyRecords || typeof legacyRecords !== 'object' || legacyRoot.migratedToExtensionSettings) {
+        return false;
+    }
+
+    const root = getExtensionSettingsRoot({ create: true });
+
+    if (!root) {
+        return false;
+    }
+
+    root[PERSONA_STATE_SETTINGS_KEY] ??= {};
+
+    for (const [personaId, record] of Object.entries(legacyRecords)) {
+        if (!hasOwn(root[PERSONA_STATE_SETTINGS_KEY], personaId)) {
+            root[PERSONA_STATE_SETTINGS_KEY][personaId] = clone(record);
+        }
+    }
+
+    legacyRoot.migratedToExtensionSettings = new Date().toISOString();
+    getSaveSettingsDebounced()?.();
+    return true;
+}
+
+function getPersonaExtensionRoot({ create = false } = {}) {
+    migrateLegacyPersonaStorage();
+    const root = getExtensionSettingsRoot({ create });
+
+    if (!root) {
+        return null;
+    }
+
+    if (!root[PERSONA_STATE_SETTINGS_KEY] || typeof root[PERSONA_STATE_SETTINGS_KEY] !== 'object') {
         if (!create) {
             return null;
         }
 
-        powerUser[MODULE_NAME][PERSONA_STATE_SETTINGS_KEY] = {};
+        root[PERSONA_STATE_SETTINGS_KEY] = {};
     }
 
-    return powerUser[MODULE_NAME][PERSONA_STATE_SETTINGS_KEY];
+    return root[PERSONA_STATE_SETTINGS_KEY];
 }
 
 function getPersonaExtensionStateRecord(personaId = getActivePersonaId()) {
@@ -2463,13 +2503,47 @@ async function saveStateNow(characterId, state) {
     }
 }
 
+// Debounced saves, one timer per character/persona so a save for one entity
+// never cancels another's. flushPendingSaves() writes everything immediately.
+const pendingSaves = new Map();
+
+function schedulePendingSave(key, run, delay = 400) {
+    const existing = pendingSaves.get(key);
+
+    if (existing) {
+        clearTimeout(existing.timer);
+    }
+
+    const entry = {
+        run,
+        timer: setTimeout(() => {
+            pendingSaves.delete(key);
+            run();
+        }, delay),
+    };
+
+    pendingSaves.set(key, entry);
+}
+
+function flushPendingSaves() {
+    const entries = [...pendingSaves.values()];
+    pendingSaves.clear();
+
+    for (const entry of entries) {
+        clearTimeout(entry.timer);
+        entry.run();
+    }
+}
+
 function scheduleSave(characterId, state) {
     const normalized = cacheState(characterId, state);
+    // Key by avatar file, not list index: indexes shift when characters are added.
+    const avatarKey = getNativeCharacterAvatarKey(characterId);
 
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-        saveStateNow(characterId, normalized);
-    }, 400);
+    schedulePendingSave(`character:${avatarKey || characterId}`, () => {
+        const currentId = avatarKey ? findCharacterIdForMemberReference(avatarKey) ?? characterId : characterId;
+        saveStateNow(currentId, normalized);
+    });
 }
 
 function updateState(mutator, {
@@ -2626,10 +2700,9 @@ function schedulePersonaSave(personaId, state) {
 
     const normalized = cachePersonaState(normalizedPersonaId, state);
 
-    clearTimeout(personaSaveTimer);
-    personaSaveTimer = setTimeout(() => {
+    schedulePendingSave(`persona:${normalizedPersonaId}`, () => {
         savePersonaStateNow(normalizedPersonaId, normalized);
-    }, 400);
+    });
 }
 
 function updatePersonaState(mutator, {
@@ -11112,7 +11185,10 @@ function registerEvents() {
 
     registerEventHandler(eventSource, eventTypes, 'APP_READY', onAppReady);
 
+    window.addEventListener('beforeunload', flushPendingSaves);
+
     registerEventHandler(eventSource, eventTypes, 'CHAT_CHANGED', () => {
+        flushPendingSaves();
         pendingRuntimeStamp = null;
         invalidateRuntimeCache();
         refreshAllUiAfterStateChange();
@@ -11140,6 +11216,15 @@ function registerEvents() {
         registerEventHandler(eventSource, eventTypes, eventName, () => {
             invalidateSelectablePersonaAvatarsCache();
         });
+    });
+
+    registerEventHandler(eventSource, eventTypes, 'PERSONA_DELETED', (payload) => {
+        const personaId = normalizePersonaId(payload?.avatarId ?? payload);
+
+        if (personaId && deletePersonaExtensionStateRecord(personaId)) {
+            clearPersonaStateCache(personaId);
+            getSaveSettingsDebounced()?.();
+        }
     });
 
     registerEventHandler(eventSource, eventTypes, 'MESSAGE_SENT', (messageId) => {
