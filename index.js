@@ -3311,6 +3311,7 @@ function buildFieldPromptEntriesForGeneration(state, {
     generationId,
     chat,
     mutate = false,
+    includeTriggerActions = true,
 } = {}) {
     const entries = [];
     let changed = false;
@@ -3321,7 +3322,11 @@ function buildFieldPromptEntriesForGeneration(state, {
         const normalized = normalizeForTarget(field);
         const scanText = buildScanText(normalized.triggerSources, chat);
         const content = normalized.content.trim();
-        const triggerActionInstruction = isPersona ? '' : normalized.triggerActionInstruction.trim();
+        const configuredTriggerAction = isPersona ? '' : normalized.triggerActionInstruction.trim();
+        const triggerActionInstruction = includeTriggerActions ? configuredTriggerAction : '';
+        // Read-only runs (quiet / impersonate) must not show content whose Trigger
+        // Action has not happened yet in the story.
+        const actionSuppressed = Boolean(configuredTriggerAction) && !includeTriggerActions;
 
         const disablingTriggered = triggerListMatches(
             normalized.disablingTriggers,
@@ -3377,6 +3382,10 @@ function buildFieldPromptEntriesForGeneration(state, {
                 applyMutableFieldState(field, { enabled: true });
                 resetTriggerActionLifecycle(field);
                 changed = true;
+            }
+
+            if (actionSuppressed) {
+                continue;
             }
 
             if (!isPersona && triggerActionInstruction) {
@@ -3463,6 +3472,10 @@ function buildFieldPromptEntriesForGeneration(state, {
 
         // Character Activating Triggers can fire Trigger Action repeatedly, but still
         // block same-generation Content when Trigger Action text exists.
+        if (actionSuppressed && activatingTriggered) {
+            continue;
+        }
+
         if (triggerActionInstruction && activatingTriggered) {
             entries.push(formatTriggerActionForPrompt(normalized, triggerActionInstruction));
 
@@ -3546,7 +3559,7 @@ function wrapPersonaDynamicFieldsPrompt(personaId, fieldText) {
 // Dynamic Field Matching and Prompt Assembly - Character Prompt Preparation
 // -----------------------------------------------------------------------------
 
-function prepareReplacementPromptForGeneration(characterId, generationId, chat, { mutate = true } = {}) {
+function prepareReplacementPromptForGeneration(characterId, generationId, chat, { mutate = true, includeTriggerActions = true } = {}) {
     let state = readState(characterId);
 
     if (!state.swapEnabled) {
@@ -3562,6 +3575,7 @@ function prepareReplacementPromptForGeneration(characterId, generationId, chat, 
         generationId,
         chat,
         mutate,
+        includeTriggerActions,
     });
 
     if (mutate && (changed || alterEgoSwapResult.changed)) {
@@ -10574,9 +10588,25 @@ function finishGenerationLifecycle({ cancel = false } = {}) {
 // Generation Flow - Prompt Interceptor
 // -----------------------------------------------------------------------------
 
+// SillyTavern calls interceptors as (chat, contextSize, abort, type).
+// Background ('quiet') runs and Impersonate must never advance Evolutia state:
+// they are not the character's reply. Impersonate must also never receive
+// character Trigger Actions, because the model is writing the user's turn.
+function getInterceptorGenerationType(args = []) {
+    const type = args.find((entry) => typeof entry === 'string');
+    return type ? String(type).trim().toLowerCase() : 'normal';
+}
+
+function isReadOnlyGenerationType(type) {
+    return type === 'quiet' || type === 'impersonate';
+}
+
 async function aspectEvolutiaGenerateInterceptor(...args) {
     const chat = getInterceptorChatFromArgs(args);
     const options = getInterceptorOptionsFromArgs(args);
+    const generationType = getInterceptorGenerationType(args);
+    const readOnly = isReadOnlyGenerationType(generationType);
+    const includeTriggerActions = !readOnly;
 
     const characterId = resolveInterceptorCharacterId(options);
     const personaId = resolveInterceptorPersonaId(options);
@@ -10601,7 +10631,8 @@ async function aspectEvolutiaGenerateInterceptor(...args) {
                 generationId,
                 Array.isArray(chat) ? chat : [],
                 {
-                    mutate: true,
+                    mutate: !readOnly,
+                    includeTriggerActions,
                 },
             );
 
@@ -10620,7 +10651,7 @@ async function aspectEvolutiaGenerateInterceptor(...args) {
                 generationId,
                 Array.isArray(chat) ? chat : [],
                 {
-                    mutate: true,
+                    mutate: !readOnly,
                 },
             );
 
