@@ -4595,6 +4595,10 @@ async function syncPromptManagerForState(state, { restoreNative = false } = {}) 
         useEvolutia: !restoreNative,
         label: 'Char Description (Evolutia)',
     });
+
+    if (!restoreNative) {
+        await checkStoryStringForTextCompletion();
+    }
 }
 
 async function setPromptManagerEntries({ aspectPromptId, nativePromptId, ensurePrompt, ensureOrderEntry, useEvolutia, label }) {
@@ -4701,6 +4705,7 @@ async function syncPromptManagerWithActivePersonaState() {
 async function syncPromptManagerWithActiveStates() {
     await syncPromptManagerWithActiveState();
     await syncPromptManagerWithActivePersonaState();
+    await checkStoryStringForTextCompletion();
 }
 
 // ============================================================================
@@ -4869,8 +4874,110 @@ function restoreDescriptionMacroSwaps() {
     }
 }
 
-function restoreStoryStringBackup() {
-    return false;
+// -----------------------------------------------------------------------------
+// Text Completion: story string
+// -----------------------------------------------------------------------------
+// Prompt Manager entries only exist for Chat Completion. On Text Completion the
+// story string decides what is sent, so {{description}} / {{persona}} there
+// must become the Evolutia macros for Dynamic Fields to reach the model.
+
+function isTextCompletionActive() {
+    const api = String(getContext()?.mainApi || '');
+    return Boolean(api) && api !== 'openai';
+}
+
+function getStoryStringContext() {
+    const powerUser = getPowerUserSettings();
+    return powerUser?.context && typeof powerUser.context === 'object' ? powerUser.context : null;
+}
+
+function setStoryString(value) {
+    const context = getStoryStringContext();
+    const $textarea = $('#context_story_string');
+
+    if ($textarea.length) {
+        $textarea.val(value).trigger('input');
+    }
+
+    if (context) {
+        context.story_string = value;
+    }
+
+    getSaveSettingsDebounced()?.();
+}
+
+function currentChatUsesAnyDynamicFields() {
+    const personaId = getActivePersonaId();
+    return getCurrentChatUsesCharacterDynamicFields() || Boolean(personaId && readPersonaCardState(personaId).swapEnabled);
+}
+
+function storyStringNeedsEvolutiaMacros() {
+    const context = getStoryStringContext();
+    return isTextCompletionActive() && currentChatUsesAnyDynamicFields() && hasDescriptionMacros(context?.story_string);
+}
+
+function updateTextCompletionNote() {
+    const $note = $(`#${UI.SETTINGS_TEXT_COMPLETION_NOTE_ID}`);
+
+    if (!$note.length) {
+        return;
+    }
+
+    if (!storyStringNeedsEvolutiaMacros()) {
+        $note.hide().empty();
+        return;
+    }
+
+    $note.show().html(`
+        <div>Text Completion: your story string uses <code>{{description}}</code> / <code>{{persona}}</code>, so Dynamic Fields are not sent to the model.</div>
+        <button type="button" class="menu_button dsf-use-story-string-macros">Use Evolutia in Story String</button>
+    `);
+}
+
+async function checkStoryStringForTextCompletion({ force = false } = {}) {
+    updateTextCompletionNote();
+
+    if (!storyStringNeedsEvolutiaMacros()) {
+        return;
+    }
+
+    const context = getStoryStringContext();
+    const template = String(context?.preset || 'Current template');
+
+    if (force) {
+        const settings = getMacroSwapSettings();
+        delete settings.declined[`story:${template}`];
+        macroSwapAskedThisSession.delete(`story:${template}`);
+    }
+
+    await offerDescriptionMacroSwap({
+        kind: 'story',
+        target: template,
+        items: [{
+            identifier: 'story_string',
+            name: 'Story String',
+            get: () => String(getStoryStringContext()?.story_string || ''),
+            set: setStoryString,
+        }],
+        describe: `<h3>Aspect: Evolutia</h3>
+            <p>You are using a Text Completion API. Your story string (context template <b>${escapeTextarea(template)}</b>) uses <code>{{description}}</code> / <code>{{persona}}</code>, so Dynamic Fields never reach the model.</p>
+            <p>Replace them with the Evolutia macros? Characters and personas without Dynamic Fields still get their normal description.</p>
+            <p>The original story string is saved; you can undo this in Extensions → Aspect: Evolutia. Switching to another context template uses that template's own story string.</p>`,
+        apply: async () => {},
+    });
+
+    updateTextCompletionNote();
+}
+
+function restoreStoryStringBackup(backup) {
+    const context = getStoryStringContext();
+
+    if (!context || String(context.preset || 'Current template') !== backup.target || String(context.story_string || '') !== backup.replaced) {
+        return false;
+    }
+
+    setStoryString(backup.original);
+    return true;
 }
 
 // ============================================================================
@@ -6721,6 +6828,7 @@ function updateMacroSwapActionState() {
 
 function updateSettingsActionState() {
     updateMacroSwapActionState();
+    updateTextCompletionNote();
     updateCharacterSettingsActionState();
     updatePersonaSettingsActionState();
 }
@@ -6868,6 +6976,10 @@ function bindExtensionSettingsEvents() {
     $(document)
         .off(`click.${MODULE_NAME}`, `#${UI.SETTINGS_RESTORE_MACROS_ID}`)
         .on(`click.${MODULE_NAME}`, `#${UI.SETTINGS_RESTORE_MACROS_ID}`, restoreDescriptionMacroSwaps);
+
+    $(document)
+        .off(`click.${MODULE_NAME}`, '.dsf-use-story-string-macros')
+        .on(`click.${MODULE_NAME}`, '.dsf-use-story-string-macros', () => checkStoryStringForTextCompletion({ force: true }));
 
     $(document)
         .off(`click.${MODULE_NAME}`, `#${UI.SETTINGS_CHARACTER_REMOVE_FIELDS_ID}`)
@@ -11930,6 +12042,12 @@ function registerEvents() {
     registerEventHandler(eventSource, eventTypes, 'WORLD_INFO_ACTIVATED', onWorldInfoActivated);
     registerEventHandler(eventSource, eventTypes, 'GENERATION_ENDED', onGenerationFinished);
     registerEventHandler(eventSource, eventTypes, 'GENERATION_STOPPED', onGenerationStopped);
+
+    registerEventHandler(eventSource, eventTypes, 'MAIN_API_CHANGED', () => {
+        runAfterSettingsSettle(() => {
+            syncPromptManagerWithActiveStates();
+        });
+    });
 
     registerEventHandler(eventSource, eventTypes, 'OAI_PRESET_CHANGED_AFTER', () => {
         runAfterSettingsSettle(() => {
