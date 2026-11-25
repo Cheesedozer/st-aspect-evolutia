@@ -1170,7 +1170,7 @@ export function renderAlterEgoControlsHtml(state, targetScope = TARGET_SCOPE.CHA
     const imageSourceSpecificControl = (() => {
         if (activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.SAME_AVATAR_DIRECTORY) {
             return `
-                <label class="${scope.cls}-control ${scope.cls}-avatar-key-wrap">
+                <label class="dsf-alter-ego-control dsf-alter-ego-avatar-key-wrap">
                     <span class="dsf-label">Other ${scope.imageNoun} Image</span>
                     <select id="${scope.id('AVATAR_KEY_ID')}" class="text_pole">
                         ${scope.renderAvatarKeyOptions(activeAlterEgo.avatarKey)}
@@ -1181,7 +1181,7 @@ export function renderAlterEgoControlsHtml(state, targetScope = TARGET_SCOPE.CHA
 
         if (activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.IMAGE_FILE) {
             return `
-                <label class="${scope.cls}-control ${scope.cls}-avatar-file-wrap">
+                <label class="dsf-alter-ego-control dsf-alter-ego-avatar-file-wrap">
                     <span class="dsf-label">Upload File</span>
                     <div class="dsf-image-file-row">
                         <button id="${scope.id('IMAGE_FILE_BUTTON_ID')}" type="button" class="menu_button">Upload File</button>
@@ -1199,7 +1199,7 @@ export function renderAlterEgoControlsHtml(state, targetScope = TARGET_SCOPE.CHA
 
         if (activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.LOCAL_FILE) {
             return `
-                <label class="${scope.cls}-control ${scope.cls}-avatar-local-file-wrap">
+                <label class="dsf-alter-ego-control dsf-alter-ego-avatar-local-file-wrap">
                     <span class="dsf-label">Local File</span>
                     <div class="dsf-image-file-row">
                         <input
@@ -1221,7 +1221,7 @@ export function renderAlterEgoControlsHtml(state, targetScope = TARGET_SCOPE.CHA
             activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.DATA_URL
         ) {
             return `
-                <label class="${scope.cls}-control ${scope.cls}-avatar-url-wrap">
+                <label class="dsf-alter-ego-control dsf-alter-ego-avatar-url-wrap">
                     <span class="dsf-label">${activeAlterEgo.avatarMode === ALTER_EGO_AVATAR_MODE.DATA_URL ? 'Embedded Image Data' : 'Image URL'}</span>
                     <input
                         id="${scope.id('AVATAR_URL_ID')}"
@@ -1238,10 +1238,10 @@ export function renderAlterEgoControlsHtml(state, targetScope = TARGET_SCOPE.CHA
     })();
 
     return `
-        <div class="${scope.cls}-header"><span class="dsf-header-label">Alter Ego</span></div>
+        <div class="dsf-alter-ego-header"><span class="dsf-header-label">Alter Ego</span></div>
 
-        <div class="${scope.cls}-body">
-            <div class="${scope.cls}-preview">
+        <div class="dsf-alter-ego-body">
+            <div class="dsf-alter-ego-preview">
                 <img
                     id="${scope.id('AVATAR_PREVIEW_ID')}"
                     src="${escapeAttribute(identity.avatarUrl || '')}"
@@ -1249,16 +1249,16 @@ export function renderAlterEgoControlsHtml(state, targetScope = TARGET_SCOPE.CHA
                 >
             </div>
 
-            <div class="${scope.cls}-control-stack">
-                <div class="${scope.cls}-current-group">
-                    <label class="${scope.cls}-control ${scope.cls}-current-wrap">
+            <div class="dsf-alter-ego-control-stack">
+                <div class="dsf-alter-ego-current-group">
+                    <label class="dsf-alter-ego-control dsf-alter-ego-current-wrap">
                         <span class="dsf-label">Current Ego</span>
                         <select id="${scope.id('SELECT_ID')}" class="text_pole">
                             ${alterEgoOptions}
                         </select>
                     </label>
 
-                    <div class="${scope.cls}-actions">
+                    <div class="dsf-alter-ego-actions">
                         <button id="${scope.id('CREATE_ID')}" type="button" class="menu_button">Create</button>
                         <button id="${scope.id('DUPLICATE_ID')}" type="button" class="menu_button">Duplicate</button>
                         <button id="${scope.id('RENAME_ID')}" type="button" class="menu_button">Rename</button>
@@ -1271,7 +1271,7 @@ export function renderAlterEgoControlsHtml(state, targetScope = TARGET_SCOPE.CHA
                         >Delete</button>
                     </div>
 
-                    <div class="${scope.cls}-trigger-buttons">
+                    <div class="dsf-alter-ego-trigger-buttons">
                         <div class="dsf-keyword-triggers-wrap ${scope.cls}-keyword-triggers-wrap">
                             <button id="${scope.id('KEYWORD_TRIGGERS_BUTTON_ID')}" type="button" class="menu_button dsf-keyword-triggers-button">Keyword Triggers</button>
                             <div class="dsf-keyword-triggers-menu ${scope.cls}-keyword-triggers-menu">
@@ -1303,8 +1303,8 @@ export function renderAlterEgoControlsHtml(state, targetScope = TARGET_SCOPE.CHA
                     </div>
                 </div>
 
-                <div class="${scope.cls}-image-group">
-                    <label class="${scope.cls}-control ${scope.cls}-avatar-mode-wrap">
+                <div class="dsf-alter-ego-image-group">
+                    <label class="dsf-alter-ego-control dsf-alter-ego-avatar-mode-wrap">
                         <span class="dsf-label">Image Source</span>
                         <select id="${scope.id('AVATAR_MODE_ID')}" class="text_pole">
                             ${scope.renderAvatarModeOptions(activeAlterEgo.avatarMode)}
