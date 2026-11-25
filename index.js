@@ -49,13 +49,6 @@ const ASPECT_INTERCEPTOR_NAME = 'aspectEvolutiaGenerateInterceptor';
 const NATIVE_DESCRIPTION_PROMPT_ID = 'charDescription';
 const NATIVE_PERSONA_PROMPT_ID = 'personaDescription';
 
-// Backward-compatible aliases for the existing character-side implementation.
-// Later sections should prefer the CHARACTER_* names directly.
-const ASPECT_PROMPT_ID = CHARACTER_ASPECT_PROMPT_ID;
-const ASPECT_PROMPT_NAME = CHARACTER_ASPECT_PROMPT_NAME;
-const ASPECT_MACRO_NAME = CHARACTER_ASPECT_MACRO_NAME;
-const ASPECT_MACRO_TEXT = CHARACTER_ASPECT_MACRO_TEXT;
-
 const KEYWORD_MODE = Object.freeze({
     ANY: 'any',
     ALL: 'all',
@@ -259,11 +252,6 @@ const UI = Object.freeze({
 
     SETTINGS_RESTORE_MACROS_ID: 'dsf_restore_description_macros',
     SETTINGS_TEXT_COMPLETION_NOTE_ID: 'dsf_text_completion_note',
-
-    // Backward-compatible aliases for existing character settings references.
-    SETTINGS_REMOVE_FIELDS_ID: 'dsf_character_remove_all_fields',
-    SETTINGS_REMOVE_CURRENT_FIELDS_ID: 'dsf_character_remove_current_fields',
-    SETTINGS_RESET_EXTENSION_ID: 'dsf_character_reset_extension',
 });
 
 const DEFAULT_STATE = Object.freeze({
@@ -347,7 +335,6 @@ const stateCache = new Map();
 const personaStateCache = new Map();
 const selectableAvatarCharactersCache = { signature: '', entries: [] };
 const selectablePersonaAvatarsCache = { signature: '', entries: [] };
-const descriptionBackups = new Map();
 const preparedPromptCache = new Map();
 
 // ============================================================================
@@ -2467,8 +2454,9 @@ function importPersonaFieldFromJson(field = {}) {
     });
 }
 
-function exportAlterEgoForJson(alterEgo, index = 0) {
-    const normalized = normalizeAlterEgo(alterEgo);
+function exportAlterEgoForJson(alterEgo, index = 0, { targetScope = TARGET_SCOPE.CHARACTER } = {}) {
+    const isPersona = targetScope === TARGET_SCOPE.PERSONA;
+    const normalized = isPersona ? normalizePersonaAlterEgo(alterEgo) : normalizeAlterEgo(alterEgo);
 
     return {
         order: index + 1,
@@ -2484,17 +2472,20 @@ function exportAlterEgoForJson(alterEgo, index = 0) {
         swapMode: normalized.swapMode,
         changeConditions: splitKeywords(normalized.changeConditions),
         changeKeywordMode: normalized.changeKeywordMode,
+        keywordMatching: normalized.keywordMatching,
         triggerSources: normalized.triggerSources,
-        fields: normalized.fields.map(exportCharacterFieldForJson),
+        fields: normalized.fields.map(isPersona ? exportPersonaFieldForJson : exportCharacterFieldForJson),
     };
 }
 
-function importAlterEgoFromJson(alterEgo = {}, existingAlterEgos = []) {
+function importAlterEgoFromJson(alterEgo = {}, existingAlterEgos = [], { targetScope = TARGET_SCOPE.CHARACTER } = {}) {
+    const isPersona = targetScope === TARGET_SCOPE.PERSONA;
     const importedFields = Array.isArray(alterEgo.fields)
-        ? alterEgo.fields.map(importCharacterFieldFromJson)
+        ? alterEgo.fields.map(isPersona ? importPersonaFieldFromJson : importCharacterFieldFromJson)
         : [];
+    const normalize = isPersona ? normalizePersonaAlterEgo : normalizeAlterEgo;
 
-    return normalizeAlterEgo({
+    return normalize({
         id: makeId(),
         name: getUniqueAlterEgoName(existingAlterEgos, alterEgo.name),
         avatarMode: alterEgo.avatarMode,
@@ -2506,6 +2497,7 @@ function importAlterEgoFromJson(alterEgo = {}, existingAlterEgos = []) {
         avatarLocalPath: alterEgo.avatarLocalPath,
         swapMode: alterEgo.swapMode,
         changeKeywordMode: alterEgo.changeKeywordMode ?? alterEgo.keywordMode,
+        keywordMatching: alterEgo.keywordMatching,
         triggerSources: alterEgo.triggerSources ?? alterEgo.changeTriggerSources,
         changeConditions: Array.isArray(alterEgo.changeConditions)
             ? alterEgo.changeConditions.map((keyword) => String(keyword ?? '')).join('\n')
@@ -2998,12 +2990,6 @@ function updatePersonaState(mutator, {
 function clearAllStateCaches() {
     stateCache.clear();
     personaStateCache.clear();
-}
-
-function clearRuntimeCachesForCharacterAndPersona() {
-    clearAllStateCaches();
-    clearAllPreparedPrompts();
-    clearGenerationLifecycle();
 }
 
 // ============================================================================
@@ -3547,18 +3533,6 @@ function isAssistantChatMessage(message) {
     }
 
     return false;
-}
-
-function isSystemChatMessage(message) {
-    if (!message || typeof message !== 'object') {
-        return false;
-    }
-
-    return Boolean(
-        message.is_system ||
-        message.system ||
-        String(message.role || '').toLowerCase() === 'system',
-    );
 }
 
 // -----------------------------------------------------------------------------
@@ -4134,14 +4108,6 @@ function prepareReplacementPromptForGeneration(characterId, generationId, chat, 
     return computeCharacterGeneration(characterId, chat, options).prompt;
 }
 
-function buildReplacementPrompt(characterId = getActiveCharacterId()) {
-    return getPreparedPrompt(characterId);
-}
-
-function buildAspectEvolutiaMacroValue() {
-    return buildAspectEvolutiaCharacterMacroValue();
-}
-
 // Group chats in "Join character cards" mode: SillyTavern's native marker
 // would contain every member's description. Mirror that, using each member's
 // Dynamic Fields (or native description) and the group's join prefix/suffix.
@@ -4272,10 +4238,6 @@ function computePersonaGeneration(personaId, chat, { endExclusive = undefined } 
 
 function preparePersonaReplacementPromptForGeneration(personaId, generationId, chat, options = {}) {
     return computePersonaGeneration(personaId, chat, options).prompt;
-}
-
-function buildPersonaReplacementPrompt(personaId = getActivePersonaId()) {
-    return getPreparedPersonaPrompt(personaId);
 }
 
 function buildAspectEvolutiaPersonaMacroValue() {
@@ -4429,54 +4391,6 @@ function getPromptOrderEntryById(order, identifier) {
     return order.find((entry) => entry?.identifier === identifier) ?? null;
 }
 
-function getPromptByName(manager, name) {
-    if (!manager || !name) {
-        return null;
-    }
-
-    if (typeof manager.getPromptCollection === 'function') {
-        const collection = manager.getPromptCollection();
-
-        if (collection && typeof collection === 'object') {
-            const prompts = Array.isArray(collection)
-                ? collection
-                : Object.values(collection);
-
-            const found = prompts.find((prompt) => String(prompt?.name || '') === name);
-
-            if (found) {
-                return found;
-            }
-        }
-    }
-
-    const serviceSettingsPrompts = manager.serviceSettings?.prompts;
-
-    if (serviceSettingsPrompts && typeof serviceSettingsPrompts === 'object') {
-        const prompts = Array.isArray(serviceSettingsPrompts)
-            ? serviceSettingsPrompts
-            : Object.values(serviceSettingsPrompts);
-
-        const found = prompts.find((prompt) => String(prompt?.name || '') === name);
-
-        if (found) {
-            return found;
-        }
-    }
-
-    return null;
-}
-
-function getPromptIdentifier(prompt, fallbackIdentifier = '') {
-    return String(
-        prompt?.identifier ??
-        prompt?.id ??
-        prompt?.name ??
-        fallbackIdentifier ??
-        '',
-    );
-}
-
 // -----------------------------------------------------------------------------
 // Prompt Manager Integration - Prompt Creation
 // -----------------------------------------------------------------------------
@@ -4527,10 +4441,6 @@ function ensurePersonaAspectPromptExists(manager) {
             macroText: PERSONA_ASPECT_MACRO_TEXT,
         }),
     );
-}
-
-function ensureAspectPromptExists(manager) {
-    return ensureCharacterAspectPromptExists(manager);
 }
 
 // -----------------------------------------------------------------------------
@@ -4596,10 +4506,6 @@ function ensurePersonaAspectPromptOrderEntry(manager) {
         fallbackPromptId: NATIVE_DESCRIPTION_PROMPT_ID,
         insertAfterFallback: false,
     });
-}
-
-function ensureAspectPromptOrderEntry(manager) {
-    return ensureCharacterAspectPromptOrderEntry(manager);
 }
 
 // -----------------------------------------------------------------------------
@@ -5058,53 +4964,6 @@ function restoreStoryStringBackup(backup) {
 }
 
 // ============================================================================
-// Section 10. Description Safety Cleanup
-// ============================================================================
-// Purpose:
-// - Own cleanup for legacy in-memory Description suppression backups.
-// ============================================================================
-
-// -----------------------------------------------------------------------------
-// Description Safety Cleanup - Restore Legacy Backups
-// -----------------------------------------------------------------------------
-
-function restoreSuppressedDescriptions() {
-    const ctx = getContext();
-
-    for (const [key, backup] of descriptionBackups.entries()) {
-        const character = ctx?.characters?.[backup.characterId];
-
-        if (!character) {
-            descriptionBackups.delete(key);
-            continue;
-        }
-
-        if (backup.hadTopDescription) {
-            character.description = backup.topDescription;
-        } else {
-            delete character.description;
-        }
-
-        if (backup.hadData) {
-            if (!character.data || typeof character.data !== 'object') {
-                character.data = {};
-            }
-
-            if (backup.hadDataDescription) {
-                character.data.description = backup.dataDescription;
-            } else {
-                delete character.data.description;
-            }
-        } else {
-            delete character.data;
-        }
-
-        descriptionBackups.delete(key);
-    }
-}
-
-
-// ============================================================================
 // Section 10A. Character Alter Ego Runtime Identity
 // ============================================================================
 // Purpose:
@@ -5441,18 +5300,6 @@ function refreshCharacterEditorAlterEgoVisual(identity) {
     }
 }
 
-function refreshExistingAssistantMessagesForActiveAlterEgo() {
-    const ctx = getContext();
-    const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
-    const characterId = getActiveCharacterId();
-
-    chat.forEach((message, index) => {
-        if (isAssistantMessageForCharacter(message, characterId)) {
-            stampMessageWithActiveAlterEgoIdentity(index, message, characterId);
-        }
-    });
-}
-
 function refreshActivePersonaAlterEgoVisualIdentity(personaId = getActivePersonaId()) {
     const normalizedPersonaId = normalizePersonaId(personaId);
 
@@ -5632,21 +5479,6 @@ function applyPersonaAlterEgoSwapForUserMessage(messageId, message = getContext(
     }, 0);
 
     return true;
-}
-
-function stampLatestUserMessageWithActivePersonaAlterEgo(personaId = getActivePersonaId()) {
-    const ctx = getContext();
-    const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
-
-    for (let index = chat.length - 1; index >= 0; index -= 1) {
-        const message = chat[index];
-
-        if (isUserChatMessage(message)) {
-            return stampMessageWithActivePersonaAlterEgoIdentity(index, message, personaId);
-        }
-    }
-
-    return false;
 }
 
 // ============================================================================
@@ -5893,8 +5725,11 @@ function buildDynamicFieldsExportPayload(characterId = getActiveCharacterId()) {
 
     return {
         type: 'aspect_evolutia_character_dynamic_fields',
-        version: 1,
+        version: 2,
+        // 'fields' = the alter ego open in the editor (read by older versions).
         fields: state.fields.map(exportCharacterFieldForJson),
+        activeAlterEgoId: state.activeAlterEgoId,
+        alterEgos: state.alterEgos.map((alterEgo, index) => exportAlterEgoForJson(alterEgo, index, { targetScope: TARGET_SCOPE.CHARACTER })),
     };
 }
 
@@ -5903,8 +5738,11 @@ function buildPersonaDynamicFieldsExportPayload(personaId = getActivePersonaId()
 
     return {
         type: 'aspect_evolutia_persona_dynamic_fields',
-        version: 1,
+        version: 2,
+        // 'fields' = the alter ego open in the editor (read by older versions).
         fields: state.fields.map(exportPersonaFieldForJson),
+        activeAlterEgoId: state.activeAlterEgoId,
+        alterEgos: state.alterEgos.map((alterEgo, index) => exportAlterEgoForJson(alterEgo, index, { targetScope: TARGET_SCOPE.PERSONA })),
     };
 }
 
@@ -5947,6 +5785,16 @@ function getFieldArrayFromPayloadSource(source) {
     return [];
 }
 
+function getAlterEgosFromDynamicFieldsPayload(payload) {
+    const source = parseDynamicFieldsPayload(payload);
+
+    if (!Array.isArray(source?.alterEgos)) {
+        return [];
+    }
+
+    return source.alterEgos.filter((alterEgo) => alterEgo && alterEgo.id !== source.activeAlterEgoId);
+}
+
 function parseDynamicFieldsPayload(payload) {
     return typeof payload === 'string' ? JSON.parse(payload) : payload;
 }
@@ -5965,12 +5813,6 @@ function getPersonaFieldsFromDynamicFieldsPayload(payload) {
     return fields.map(importPersonaFieldFromJson);
 }
 
-function filterImportableFields(fields) {
-    return Array.isArray(fields)
-        ? fields.map(normalizeField).filter((field) => field.content.trim() || field.name.trim())
-        : [];
-}
-
 function filterImportableCharacterFields(fields) {
     return Array.isArray(fields)
         ? fields.map(normalizeCharacterField).filter((field) => field.content.trim() || field.name.trim())
@@ -5983,7 +5825,7 @@ function filterImportablePersonaFields(fields) {
         : [];
 }
 
-function appendImportedFieldsToActiveCharacter(fields, successMessage) {
+function appendImportedFieldsToActiveCharacter(fields, successMessage, alterEgos = []) {
     const characterId = getActiveCharacterId();
 
     if (characterId === undefined) {
@@ -5993,7 +5835,7 @@ function appendImportedFieldsToActiveCharacter(fields, successMessage) {
 
     const normalizedFields = filterImportableCharacterFields(fields);
 
-    if (!normalizedFields.length) {
+    if (!normalizedFields.length && !alterEgos.length) {
         notify('warning', 'No Character Dynamic Fields were found to import.');
         return;
     }
@@ -6001,12 +5843,17 @@ function appendImportedFieldsToActiveCharacter(fields, successMessage) {
     updateState((state) => {
         const importedFields = prepareImportedCharacterFields(normalizedFields, state.fields);
         state.fields.push(...importedFields);
+
+        for (const alterEgo of alterEgos) {
+            state.alterEgos.push(importAlterEgoFromJson(alterEgo, state.alterEgos, { targetScope: TARGET_SCOPE.CHARACTER }));
+        }
     }, { rerender: true });
 
-    notify('success', successMessage || `Imported ${normalizedFields.length} Character Dynamic Field(s).`);
+    const alterEgoNote = alterEgos.length ? ` and ${alterEgos.length} alter ego(s)` : '';
+    notify('success', `${successMessage || `Imported ${normalizedFields.length} Character Dynamic Field(s).`}${alterEgoNote}`);
 }
 
-function appendImportedFieldsToActivePersona(fields, successMessage) {
+function appendImportedFieldsToActivePersona(fields, successMessage, alterEgos = []) {
     const personaId = getActivePersonaId();
 
     if (!personaId) {
@@ -6016,7 +5863,7 @@ function appendImportedFieldsToActivePersona(fields, successMessage) {
 
     const normalizedFields = filterImportablePersonaFields(fields);
 
-    if (!normalizedFields.length) {
+    if (!normalizedFields.length && !alterEgos.length) {
         notify('warning', 'No Persona Dynamic Fields were found to import.');
         return;
     }
@@ -6024,9 +5871,14 @@ function appendImportedFieldsToActivePersona(fields, successMessage) {
     updatePersonaState((state) => {
         const importedFields = prepareImportedPersonaFields(normalizedFields, state.fields);
         state.fields.push(...importedFields);
+
+        for (const alterEgo of alterEgos) {
+            state.alterEgos.push(importAlterEgoFromJson(alterEgo, state.alterEgos, { targetScope: TARGET_SCOPE.PERSONA }));
+        }
     }, { rerender: true });
 
-    notify('success', successMessage || `Imported ${normalizedFields.length} Persona Dynamic Field(s).`);
+    const alterEgoNote = alterEgos.length ? ` and ${alterEgos.length} alter ego(s)` : '';
+    notify('success', `${successMessage || `Imported ${normalizedFields.length} Persona Dynamic Field(s).`}${alterEgoNote}`);
 }
 
 // -----------------------------------------------------------------------------
@@ -6269,7 +6121,7 @@ async function handleDynamicFieldsImportFileSelected(event) {
         const payload = JSON.parse(text);
         const fields = getFieldsFromDynamicFieldsPayload(payload);
 
-        appendImportedFieldsToActiveCharacter(fields, `Imported ${fields.length} Character Dynamic Field(s) from JSON file.`);
+        appendImportedFieldsToActiveCharacter(fields, `Imported ${fields.length} Character Dynamic Field(s) from JSON file.`, getAlterEgosFromDynamicFieldsPayload(payload));
     } catch (error) {
         console.error(`[${MODULE_NAME}] Failed to import Character Dynamic Fields JSON file:`, error);
         notify('error', 'Failed to import Character Dynamic Fields from JSON file.');
@@ -6300,7 +6152,7 @@ async function importDynamicFieldsFromClipboardJson() {
         const text = await readTextFromClipboard();
         const fields = getFieldsFromDynamicFieldsPayload(text);
 
-        appendImportedFieldsToActiveCharacter(fields, `Imported ${fields.length} Character Dynamic Field(s) from clipboard JSON.`);
+        appendImportedFieldsToActiveCharacter(fields, `Imported ${fields.length} Character Dynamic Field(s) from clipboard JSON.`, getAlterEgosFromDynamicFieldsPayload(text));
     } catch (error) {
         console.error(`[${MODULE_NAME}] Failed to import clipboard Character Dynamic Fields:`, error);
         notify('error', 'Failed to import Character Dynamic Fields from clipboard JSON.');
@@ -6343,7 +6195,7 @@ async function handlePersonaDynamicFieldsImportFileSelected(event) {
         const payload = JSON.parse(text);
         const fields = getPersonaFieldsFromDynamicFieldsPayload(payload);
 
-        appendImportedFieldsToActivePersona(fields, `Imported ${fields.length} Persona Dynamic Field(s) from JSON file.`);
+        appendImportedFieldsToActivePersona(fields, `Imported ${fields.length} Persona Dynamic Field(s) from JSON file.`, getAlterEgosFromDynamicFieldsPayload(payload));
     } catch (error) {
         console.error(`[${MODULE_NAME}] Failed to import Persona Dynamic Fields JSON file:`, error);
         notify('error', 'Failed to import Persona Dynamic Fields from JSON file.');
@@ -6357,7 +6209,7 @@ async function importPersonaDynamicFieldsFromClipboardJson() {
         const text = await readTextFromClipboard();
         const fields = getPersonaFieldsFromDynamicFieldsPayload(text);
 
-        appendImportedFieldsToActivePersona(fields, `Imported ${fields.length} Persona Dynamic Field(s) from clipboard JSON.`);
+        appendImportedFieldsToActivePersona(fields, `Imported ${fields.length} Persona Dynamic Field(s) from clipboard JSON.`, getAlterEgosFromDynamicFieldsPayload(text));
     } catch (error) {
         console.error(`[${MODULE_NAME}] Failed to import clipboard Persona Dynamic Fields:`, error);
         notify('error', 'Failed to import Persona Dynamic Fields from clipboard JSON.');
@@ -6515,7 +6367,6 @@ async function removeAllFieldsForAllCharacters() {
     }
 
     stateCache.clear();
-    restoreSuppressedDescriptions();
 
     renderPanel();
     applyUiVisibility();
@@ -6610,7 +6461,6 @@ async function resetAllCharactersToOutOfBox() {
     }
 
     stateCache.clear();
-    restoreSuppressedDescriptions();
 
     await syncPromptManagerForState(createOutOfBoxState(getActiveCharacterId()), { restoreNative: true });
 
@@ -9777,14 +9627,6 @@ function updateStateForTargetScope(targetScope, mutator, options = {}) {
     updateState(mutator, options);
 }
 
-function getFieldStateOptionsForTargetScope(targetScope, options = {}) {
-    return {
-        ...options,
-        targetScope,
-        includeTriggerActions: targetScope !== TARGET_SCOPE.PERSONA,
-    };
-}
-
 function createBlankFieldForTargetScope(targetScope) {
     return normalizeFieldForTargetScope({
         name: '',
@@ -11699,14 +11541,6 @@ function stampPendingRuntimeOnMessage(messageId) {
 }
 
 // -----------------------------------------------------------------------------
-// Generation Flow - Prompt Build Cleanup
-// -----------------------------------------------------------------------------
-
-function onGenerationPromptBuilt() {
-    restoreSuppressedDescriptions();
-}
-
-// -----------------------------------------------------------------------------
 // Generation Flow - Completion
 // -----------------------------------------------------------------------------
 
@@ -11784,20 +11618,6 @@ function refreshCharacterRuntimeUi() {
 // -----------------------------------------------------------------------------
 // SillyTavern Event Wiring - Dynamic Fields Menu State
 // -----------------------------------------------------------------------------
-
-function isAnyDynamicFieldsMenuOpen() {
-    return Boolean(
-        $([
-            `#${UI.IMPORT_MENU_ID}.dsf-menu-open`,
-            `#${UI.EXPORT_MENU_ID}.dsf-menu-open`,
-            `#${UI.PERSONA_IMPORT_MENU_ID}.dsf-menu-open`,
-            `#${UI.PERSONA_EXPORT_MENU_ID}.dsf-menu-open`,
-            '.dsf-keyword-triggers-menu.dsf-menu-open',
-            '.dsf-trigger-actions-menu.dsf-menu-open',
-            '.dsf-triggered-by-menu.dsf-menu-open',
-        ].join(',')).length,
-    );
-}
 
 function closeDynamicFieldsMenusForHardRefresh() {
     if (typeof closeImportExportMenus === 'function') {
@@ -11890,7 +11710,6 @@ function refreshCharacterUiAfterStateChange() {
     stateCache.clear();
     clearAllPreparedPrompts();
     clearGenerationLifecycle();
-    restoreSuppressedDescriptions();
     applyActiveAlterEgoNameToSillyTavern();
     refreshActiveAlterEgoVisualIdentity();
 
@@ -11936,7 +11755,6 @@ function refreshAllUiAfterStateChange() {
     clearAllStateCaches();
     clearAllPreparedPrompts();
     clearGenerationLifecycle();
-    restoreSuppressedDescriptions();
     applyActiveAlterEgoNameToSillyTavern();
     refreshActiveAlterEgoVisualIdentity();
     refreshActivePersonaAlterEgoVisualIdentity();
@@ -12124,8 +11942,6 @@ function registerEvents() {
         }
     });
 
-    registerEventHandler(eventSource, eventTypes, 'GENERATE_AFTER_DATA', onGenerationPromptBuilt);
-    registerEventHandler(eventSource, eventTypes, 'GENERATE_AFTER_COMBINE_PROMPTS', onGenerationPromptBuilt);
 
     registerEventHandler(eventSource, eventTypes, 'WORLD_INFO_ACTIVATED', onWorldInfoActivated);
     registerEventHandler(eventSource, eventTypes, 'GENERATION_ENDED', onGenerationFinished);
@@ -12239,9 +12055,5 @@ function boot() {
 // -----------------------------------------------------------------------------
 // Extension Activation - SillyTavern Entry Point
 // -----------------------------------------------------------------------------
-
-export function activate() {
-    boot();
-}
 
 boot();
