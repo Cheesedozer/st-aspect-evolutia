@@ -3931,6 +3931,7 @@ function buildFieldPromptEntriesForGeneration(fields, runtime, {
     messageIndex = null,
 } = {}) {
     const entries = [];
+    const actions = [];
     let changed = false;
     const isPersona = targetScope === TARGET_SCOPE.PERSONA;
     const normalizeForTarget = isPersona ? normalizePersonaField : normalizeCharacterField;
@@ -3977,7 +3978,7 @@ function buildFieldPromptEntriesForGeneration(fields, runtime, {
             setState({ enabled: true, actionKey: '', reason: `Enabled by "${enablingMatch}"` });
 
             if (triggerActionInstruction) {
-                entries.push(formatTriggerActionForPrompt(normalized, triggerActionInstruction));
+                actions.push(triggerActionInstruction);
                 state.actionKey = occurrenceKey;
                 continue;
             }
@@ -3998,7 +3999,7 @@ function buildFieldPromptEntriesForGeneration(fields, runtime, {
                 continue;
             }
 
-            entries.push(formatTriggerActionForPrompt(normalized, triggerActionInstruction));
+            actions.push(triggerActionInstruction);
             setState({ actionKey: occurrenceKey, reason: `Trigger Action by "${activatingMatch}"` });
             continue;
         }
@@ -4010,6 +4011,7 @@ function buildFieldPromptEntriesForGeneration(fields, runtime, {
 
     return {
         entries,
+        actions,
         changed,
     };
 }
@@ -4030,15 +4032,40 @@ function formatFieldForPrompt(field) {
     ].join('\n');
 }
 
-function formatTriggerActionForPrompt(field, instruction) {
-    const normalized = normalizeCharacterField(field);
+// Trigger Actions are injected as a short system note right before the reply
+// (depth 0), not inside the description at the top of the prompt, where models
+// tend to ignore instructions. {{char}} / {{user}} are filled in here.
+const TRIGGER_ACTION_PROMPT_KEY = 'aspectEvolutiaTriggerActions';
+
+function fillNameMacros(text, characterName) {
+    return String(text || '')
+        .replace(/\{\{char\}\}/gi, characterName)
+        .replace(/\{\{user\}\}/gi, String(getContext()?.name1 || 'the user'));
+}
+
+function formatTriggerActionsForPrompt(actions, characterName) {
+    if (!actions?.length) {
+        return '';
+    }
+
+    const lines = actions.map((action) => `- ${fillNameMacros(action, characterName).trim()}`);
 
     return [
-        `[TRIGGER ACTION]`,
-        `You must ensure the following actions occur:`,
-        instruction.trim(),
-        `[END TRIGGER ACTION]`,
+        `[Story event for ${characterName} in the next reply:`,
+        ...lines,
+        `Write this happening now, as ${characterName}'s own action, before continuing the scene.]`,
     ].join('\n');
+}
+
+function setTriggerActionPrompt(text) {
+    const ctx = getContext();
+
+    if (typeof ctx?.setExtensionPrompt !== 'function') {
+        return;
+    }
+
+    // position 1 = IN_CHAT, depth 0 = after the last message, role 0 = system
+    ctx.setExtensionPrompt(TRIGGER_ACTION_PROMPT_KEY, String(text || ''), 1, 0, false, 0);
 }
 
 function wrapDynamicFieldsPrompt(characterId, fieldText, nameOverride = '') {
@@ -4090,7 +4117,7 @@ function computeCharacterGeneration(characterId, chat, { includeTriggerActions =
     }
 
     const alterEgo = cardState.alterEgos.find((entry) => entry.id === runtime.alterEgoId) ?? cardState.alterEgos[0];
-    const { entries } = buildFieldPromptEntriesForGeneration(alterEgo?.fields || [], runtime, {
+    const { entries, actions } = buildFieldPromptEntriesForGeneration(alterEgo?.fields || [], runtime, {
         targetScope: TARGET_SCOPE.CHARACTER,
         chat,
         includeTriggerActions,
@@ -4100,7 +4127,7 @@ function computeCharacterGeneration(characterId, chat, { includeTriggerActions =
     const name = String(alterEgo?.name || '').trim() || getNativeCharacterName(characterId);
     const prompt = entries.length ? wrapDynamicFieldsPrompt(characterId, entries.join('\n\n'), name) : '';
 
-    return { prompt, runtime: serializeRuntime(runtime), alterEgo };
+    return { prompt, actionPrompt: formatTriggerActionsForPrompt(actions, name), runtime: serializeRuntime(runtime), alterEgo };
 }
 
 function prepareReplacementPromptForGeneration(characterId, generationId, chat, options = {}) {
@@ -11438,6 +11465,7 @@ let pendingRuntimeStamp = null;
 
 function finishGenerationLifecycle() {
     activeGenerationContext = null;
+    setTriggerActionPrompt('');
     const characterId = currentGenerationCharacterId;
     const personaId = currentGenerationPersonaId;
 
@@ -11491,6 +11519,9 @@ async function aspectEvolutiaGenerateInterceptor(...args) {
         pendingRuntimeStamp = null;
     }
 
+    // Never leave a previous reply's action note in place.
+    setTriggerActionPrompt('');
+
     if (
         (characterId === undefined || characterId === null || characterId === '') &&
         !personaId
@@ -11536,6 +11567,10 @@ function computeActiveGeneration(context = activeGenerationContext) {
             includeTriggerActions,
             endExclusive: targetIndex,
         });
+
+        if (!readOnly) {
+            setTriggerActionPrompt(result.actionPrompt);
+        }
 
         if (result.runtime) {
             setPreparedPrompt(characterId, generationId, result.prompt);
