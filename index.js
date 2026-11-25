@@ -61,6 +61,14 @@ const KEYWORD_MODE = Object.freeze({
     ALL: 'all',
 });
 
+// How a keyword is found in the scanned text. Fields/alter egos saved before
+// this setting existed keep the old 'substring' behaviour; new ones use
+// whole words. A keyword written as /pattern/flags on its own line is a regex.
+const KEYWORD_MATCHING = Object.freeze({
+    WORDS: 'words',
+    SUBSTRING: 'substring',
+});
+
 const TRIGGER_SOURCE = Object.freeze({
     QUIET_PROMPTS: 'quiet_prompts',
     SYSTEM_PROMPTS: 'system_prompts',
@@ -1469,6 +1477,7 @@ function createDefaultFields() {
             activatingKeywordMode: KEYWORD_MODE.ALL,
             enablingKeywordMode: KEYWORD_MODE.ALL,
             disablingKeywordMode: KEYWORD_MODE.ALL,
+            keywordMatching: KEYWORD_MATCHING.WORDS,
             triggerActionInstruction: '',
             content: '',
             enabled: true,
@@ -1482,6 +1491,7 @@ function createDefaultFields() {
             activatingKeywordMode: KEYWORD_MODE.ALL,
             enablingKeywordMode: KEYWORD_MODE.ALL,
             disablingKeywordMode: KEYWORD_MODE.ALL,
+            keywordMatching: KEYWORD_MATCHING.WORDS,
             triggerActionInstruction: '',
             content: '',
             enabled: true,
@@ -1495,6 +1505,7 @@ function createDefaultFields() {
             activatingKeywordMode: KEYWORD_MODE.ALL,
             enablingKeywordMode: KEYWORD_MODE.ALL,
             disablingKeywordMode: KEYWORD_MODE.ALL,
+            keywordMatching: KEYWORD_MATCHING.WORDS,
             triggerActionInstruction: '',
             content: '',
             enabled: true,
@@ -1542,6 +1553,10 @@ function createEmptyPersonaFieldsState(personaId = getActivePersonaId()) {
     setActivePersonaAlterEgoFields(state, []);
 
     return normalizePersonaState(state, { personaId });
+}
+
+function normalizeKeywordMatching(rawMatching) {
+    return rawMatching === KEYWORD_MATCHING.WORDS ? KEYWORD_MATCHING.WORDS : KEYWORD_MATCHING.SUBSTRING;
 }
 
 function normalizeKeywordMode(rawMode) {
@@ -1594,6 +1609,7 @@ function normalizeField(field = {}, options = {}) {
         activatingKeywordMode: normalizeKeywordMode(field.activatingKeywordMode ?? legacyKeywordMode),
         enablingKeywordMode: normalizeKeywordMode(field.enablingKeywordMode ?? legacyKeywordMode),
         disablingKeywordMode: normalizeKeywordMode(field.disablingKeywordMode ?? legacyKeywordMode),
+        keywordMatching: normalizeKeywordMatching(field.keywordMatching),
         triggerActionInstruction: includeTriggerActions ? String(field.triggerActionInstruction ?? '') : '',
         content: String(field.content ?? ''),
     };
@@ -1654,6 +1670,7 @@ function createBaseAlterEgo({ characterId = getActiveCharacterId(), fields = cre
         swapMode: ALTER_EGO_SWAP_MODE.MANUAL,
         changeConditions: '',
         changeKeywordMode: KEYWORD_MODE.ANY,
+        keywordMatching: KEYWORD_MATCHING.WORDS,
         triggerSources: [...DEFAULT_TRIGGER_SOURCES],
         fields,
     }, { fallbackName: getNativeCharacterName(characterId), fallbackAvatarKey: getNativeCharacterAvatarKey(characterId) });
@@ -1687,6 +1704,7 @@ function createBlankAlterEgo(existingAlterEgos = [], { characterId = getActiveCh
         swapMode: source?.swapMode ?? ALTER_EGO_SWAP_MODE.MANUAL,
         changeConditions: source?.changeConditions ?? '',
         changeKeywordMode: source?.changeKeywordMode ?? KEYWORD_MODE.ANY,
+        keywordMatching: source?.keywordMatching ?? KEYWORD_MATCHING.WORDS,
         triggerSources: source?.triggerSources ?? [...DEFAULT_TRIGGER_SOURCES],
         fields: source
             ? source.fields.map((field) => normalizeCharacterField({
@@ -1723,6 +1741,7 @@ function normalizeAlterEgo(alterEgo = {}, { fallbackName = ALTER_EGO_DEFAULT_NAM
         swapMode: normalizeAlterEgoSwapMode(alterEgo.swapMode),
         changeConditions: String(alterEgo.changeConditions ?? '').trim(),
         changeKeywordMode: normalizeKeywordMode(alterEgo.changeKeywordMode ?? alterEgo.keywordMode ?? KEYWORD_MODE.ANY),
+        keywordMatching: normalizeKeywordMatching(alterEgo.keywordMatching),
         triggerSources: normalizeTriggerSources(alterEgo.triggerSources ?? alterEgo.changeTriggerSources),
         fields,
     };
@@ -1788,6 +1807,7 @@ function createBasePersonaAlterEgo({ personaId = getActivePersonaId(), fields = 
         swapMode: ALTER_EGO_SWAP_MODE.MANUAL,
         changeConditions: '',
         changeKeywordMode: KEYWORD_MODE.ANY,
+        keywordMatching: KEYWORD_MATCHING.WORDS,
         triggerSources: [...DEFAULT_TRIGGER_SOURCES],
         fields,
     }, { fallbackName: getNativePersonaName(normalizedPersonaId), fallbackAvatarKey: getNativePersonaAvatarKey(normalizedPersonaId) });
@@ -1822,6 +1842,7 @@ function createBlankPersonaAlterEgo(existingAlterEgos = [], { personaId = getAct
         swapMode: source?.swapMode ?? ALTER_EGO_SWAP_MODE.MANUAL,
         changeConditions: source?.changeConditions ?? '',
         changeKeywordMode: source?.changeKeywordMode ?? KEYWORD_MODE.ANY,
+        keywordMatching: source?.keywordMatching ?? KEYWORD_MATCHING.WORDS,
         triggerSources: source?.triggerSources ?? [...DEFAULT_TRIGGER_SOURCES],
         fields: source
             ? source.fields.map((field) => normalizePersonaField({ ...field, id: makeId() }))
@@ -1855,6 +1876,7 @@ function normalizePersonaAlterEgo(alterEgo = {}, { fallbackName = ALTER_EGO_DEFA
         swapMode: normalizeAlterEgoSwapMode(alterEgo.swapMode),
         changeConditions: String(alterEgo.changeConditions ?? '').trim(),
         changeKeywordMode: normalizeKeywordMode(alterEgo.changeKeywordMode ?? alterEgo.keywordMode ?? KEYWORD_MODE.ANY),
+        keywordMatching: normalizeKeywordMatching(alterEgo.keywordMatching),
         triggerSources: normalizeTriggerSources(alterEgo.triggerSources ?? alterEgo.changeTriggerSources),
         fields,
     };
@@ -2158,6 +2180,7 @@ function exportFieldForJson(field, index = 0, options = {}) {
         activatingKeywordMode: normalized.activatingKeywordMode,
         enablingKeywordMode: normalized.enablingKeywordMode,
         disablingKeywordMode: normalized.disablingKeywordMode,
+        keywordMatching: normalized.keywordMatching,
         activatingTriggers: splitKeywords(normalized.activatingTriggers),
         enablingTriggers: splitKeywords(normalized.enablingTriggers),
         disablingTriggers: splitKeywords(normalized.disablingTriggers),
@@ -2210,6 +2233,7 @@ function importFieldFromJson(field = {}, options = {}) {
         activatingKeywordMode: normalizeKeywordMode(field.activatingKeywordMode ?? field.keywordMode),
         enablingKeywordMode: normalizeKeywordMode(field.enablingKeywordMode ?? field.keywordMode),
         disablingKeywordMode: normalizeKeywordMode(field.disablingKeywordMode ?? field.keywordMode),
+        keywordMatching: field.keywordMatching,
         triggerActionInstruction: includeTriggerActions ? joinLinesFromJson(field.triggerActionInstruction) : '',
         content: joinLinesFromJson(field.content),
     }, {
@@ -3447,11 +3471,12 @@ function getTriggerSourceText(source, chatOverride) {
 function buildScanText(triggerSources = DEFAULT_TRIGGER_SOURCES, chatOverride = undefined) {
     const sources = normalizeTriggerSources(triggerSources);
 
+    // Original case is kept so /regex/ keywords can match case-sensitively;
+    // plain keywords are compared case-insensitively in keywordMatches().
     return sources
         .map((source) => getTriggerSourceText(source, chatOverride))
         .filter(Boolean)
-        .join('\n')
-        .toLowerCase();
+        .join('\n');
 }
 
 // ============================================================================
@@ -3465,34 +3490,85 @@ function buildScanText(triggerSources = DEFAULT_TRIGGER_SOURCES, chatOverride = 
 // Dynamic Field Matching and Prompt Assembly - Trigger Matching
 // -----------------------------------------------------------------------------
 
+const REGEX_KEYWORD_PATTERN = /^\/(.+)\/([a-z]*)$/s;
+const keywordRegexCache = new Map();
+
+// Splits on newlines, then on commas/semicolons, except lines that are a
+// /regex/ (those may contain commas).
 function splitKeywords(rawKeywords) {
     return String(rawKeywords || '')
-        .split(/\r?\n|[,;]/g)
+        .split(/\r?\n/g)
+        .flatMap((line) => {
+            const trimmed = line.trim();
+            return REGEX_KEYWORD_PATTERN.test(trimmed) ? [trimmed] : trimmed.split(/[,;]/g);
+        })
         .map((keyword) => keyword.trim())
         .filter(Boolean);
 }
 
-function triggerListMatches(rawTriggers, scanText, keywordMode = KEYWORD_MODE.ALL) {
+function getKeywordRegex(keyword, matching) {
+    const cacheKey = `${matching}\u0000${keyword}`;
+
+    if (keywordRegexCache.has(cacheKey)) {
+        return keywordRegexCache.get(cacheKey);
+    }
+
+    let regex = null;
+    const regexMatch = keyword.match(REGEX_KEYWORD_PATTERN);
+
+    try {
+        if (regexMatch) {
+            regex = new RegExp(regexMatch[1], regexMatch[2].replace(/[gy]/g, ''));
+        } else if (matching === KEYWORD_MATCHING.WORDS) {
+            const escaped = keyword.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+            regex = new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`, 'u');
+        }
+    } catch (error) {
+        console.warn(`[${MODULE_NAME}] Invalid keyword regex ${keyword}:`, error);
+        regex = /$^/;
+    }
+
+    keywordRegexCache.set(cacheKey, regex);
+    return regex;
+}
+
+function keywordMatches(keyword, scanText, matching = KEYWORD_MATCHING.SUBSTRING) {
+    const text = String(scanText || '');
+    const isRegex = REGEX_KEYWORD_PATTERN.test(keyword);
+    const regex = getKeywordRegex(keyword, matching);
+
+    if (isRegex) {
+        return regex.test(text);
+    }
+
+    const lowered = text.toLowerCase();
+
+    if (regex) {
+        return regex.test(lowered);
+    }
+
+    return lowered.includes(keyword.toLowerCase());
+}
+
+function triggerListMatches(rawTriggers, scanText, keywordMode = KEYWORD_MODE.ALL, matching = KEYWORD_MATCHING.SUBSTRING) {
     const triggers = splitKeywords(rawTriggers);
 
     if (!triggers.length) {
         return false;
     }
 
-    const loweredTriggers = triggers.map((trigger) => trigger.toLowerCase());
-
     if (keywordMode === KEYWORD_MODE.ALL) {
-        return loweredTriggers.every((trigger) => scanText.includes(trigger));
+        return triggers.every((trigger) => keywordMatches(trigger, scanText, matching));
     }
 
-    return loweredTriggers.some((trigger) => scanText.includes(trigger));
+    return triggers.some((trigger) => keywordMatches(trigger, scanText, matching));
 }
 
 // Returns the keyword(s) that matched, or '' when the list did not match.
-function findMatchingTrigger(rawTriggers, scanText, keywordMode = KEYWORD_MODE.ALL) {
+function findMatchingTrigger(rawTriggers, scanText, keywordMode = KEYWORD_MODE.ALL, matching = KEYWORD_MATCHING.SUBSTRING) {
     const triggers = splitKeywords(rawTriggers);
 
-    if (!triggers.length || !triggerListMatches(rawTriggers, scanText, keywordMode)) {
+    if (!triggers.length || !triggerListMatches(rawTriggers, scanText, keywordMode, matching)) {
         return '';
     }
 
@@ -3500,7 +3576,7 @@ function findMatchingTrigger(rawTriggers, scanText, keywordMode = KEYWORD_MODE.A
         return triggers.join(', ');
     }
 
-    return triggers.find((trigger) => triggerListMatches(trigger, scanText, KEYWORD_MODE.ANY)) || triggers[0];
+    return triggers.find((trigger) => keywordMatches(trigger, scanText, matching)) || triggers[0];
 }
 
 function alterEgoSwapTriggersMatch(alterEgo, chatOverride = undefined) {
@@ -3516,6 +3592,7 @@ function alterEgoSwapTriggersMatch(alterEgo, chatOverride = undefined) {
         normalized.changeConditions,
         scanText,
         normalized.changeKeywordMode,
+        normalized.keywordMatching,
     );
 }
 
@@ -3538,6 +3615,7 @@ function personaAlterEgoSwapTriggersMatch(alterEgo, chatOverride = undefined) {
         normalized.changeConditions,
         scanText,
         normalized.changeKeywordMode,
+        normalized.keywordMatching,
     );
 }
 
@@ -3661,7 +3739,7 @@ function buildFieldPromptEntriesForGeneration(fields, runtime, {
             changed = true;
         };
 
-        const disablingMatch = findMatchingTrigger(normalized.disablingTriggers, scanText, normalized.disablingKeywordMode);
+        const disablingMatch = findMatchingTrigger(normalized.disablingTriggers, scanText, normalized.disablingKeywordMode, normalized.keywordMatching);
 
         if (disablingMatch) {
             if (state.enabled || state.actionKey) {
@@ -3672,9 +3750,9 @@ function buildFieldPromptEntriesForGeneration(fields, runtime, {
         }
 
         const enablingMatch = !state.enabled
-            ? findMatchingTrigger(normalized.enablingTriggers, scanText, normalized.enablingKeywordMode)
+            ? findMatchingTrigger(normalized.enablingTriggers, scanText, normalized.enablingKeywordMode, normalized.keywordMatching)
             : '';
-        const activatingMatch = findMatchingTrigger(normalized.activatingTriggers, scanText, normalized.activatingKeywordMode);
+        const activatingMatch = findMatchingTrigger(normalized.activatingTriggers, scanText, normalized.activatingKeywordMode, normalized.keywordMatching);
         const activationSatisfied = !splitKeywords(normalized.activatingTriggers).length || Boolean(activatingMatch);
         const occurrenceKey = getTriggerOccurrenceKey(scanText);
 
@@ -5427,6 +5505,7 @@ function createFieldFromNativeImport(name, content) {
         activatingKeywordMode: KEYWORD_MODE.ALL,
         enablingKeywordMode: KEYWORD_MODE.ALL,
         disablingKeywordMode: KEYWORD_MODE.ALL,
+        keywordMatching: KEYWORD_MATCHING.WORDS,
         triggerActionInstruction: '',
         content,
         enabled: true,
@@ -5443,6 +5522,7 @@ function createPersonaFieldFromNativeImport(name, content) {
         activatingKeywordMode: KEYWORD_MODE.ALL,
         enablingKeywordMode: KEYWORD_MODE.ALL,
         disablingKeywordMode: KEYWORD_MODE.ALL,
+        keywordMatching: KEYWORD_MATCHING.WORDS,
         triggerActionInstruction: '',
         content,
         enabled: true,
@@ -8518,6 +8598,7 @@ function renderAlterEgoControlsHtml(state) {
                                 <div class="dsf-keyword-trigger-group">
                                     <div class="dsf-label">Swap Triggers (Separate by comma, semicolon, or newline).</div>
                                     <textarea class="text_pole dsf-alter-ego-change-conditions dsf-trigger-textarea" placeholder="Example: I put on my supersuit, I take off my supersuit">${escapeTextarea(activeAlterEgo.changeConditions)}</textarea>
+                                    <div class="dsf-trigger-mode-row">${renderKeywordMatchingSelectHtml(activeAlterEgo.keywordMatching, 'alter-ego')}</div>
                                     <div class="dsf-trigger-mode-row">
                                         <label class="dsf-keyword-mode-wrap" title="Any means at least one alter ego trigger must match. All means every alter ego trigger must match.">
                                             <span>Match</span>
@@ -8702,6 +8783,7 @@ function renderPersonaAlterEgoControlsHtml(state) {
                                 <div class="dsf-keyword-trigger-group">
                                     <div class="dsf-label">Swap Triggers (Separate by comma, semicolon, or newline).</div>
                                     <textarea class="text_pole dsf-persona-alter-ego-change-conditions dsf-trigger-textarea" placeholder="Example: I put on my supersuit, I take off my supersuit">${escapeTextarea(activeAlterEgo.changeConditions)}</textarea>
+                                    <div class="dsf-trigger-mode-row">${renderKeywordMatchingSelectHtml(activeAlterEgo.keywordMatching, 'alter-ego', TARGET_SCOPE.PERSONA)}</div>
                                     <div class="dsf-trigger-mode-row">
                                         <label class="dsf-keyword-mode-wrap" title="Any means at least one persona alter ego trigger must match. All means every persona alter ego trigger must match.">
                                             <span>Match</span>
@@ -8809,6 +8891,20 @@ function renderPersonaPanel() {
 // User Interface Rendering - Field HTML
 // -----------------------------------------------------------------------------
 
+function renderKeywordMatchingSelectHtml(matching, target, targetScope = TARGET_SCOPE.CHARACTER) {
+    const value = normalizeKeywordMatching(matching);
+
+    return `
+        <label class="dsf-keyword-mode-wrap dsf-keyword-matching-wrap" title="Whole words: 'arm' does not match 'warm'. Anywhere: the old behaviour, matches inside other words. A keyword written as /pattern/flags on its own line is a regular expression.">
+            <span>Keywords match</span>
+            <select class="text_pole dsf-keyword-matching" data-dsf-matching-target="${escapeAttribute(target)}" data-target-scope="${escapeAttribute(targetScope)}">
+                <option value="${KEYWORD_MATCHING.WORDS}" ${value === KEYWORD_MATCHING.WORDS ? 'selected' : ''}>Whole words</option>
+                <option value="${KEYWORD_MATCHING.SUBSTRING}" ${value === KEYWORD_MATCHING.SUBSTRING ? 'selected' : ''}>Anywhere (legacy)</option>
+            </select>
+        </label>
+    `;
+}
+
 function renderFieldHtml(field, index = 0, { targetScope = TARGET_SCOPE.CHARACTER } = {}) {
     const isPersona = targetScope === TARGET_SCOPE.PERSONA;
     const normalized = isPersona ? normalizePersonaField(field) : normalizeCharacterField(field);
@@ -8878,6 +8974,7 @@ function renderFieldHtml(field, index = 0, { targetScope = TARGET_SCOPE.CHARACTE
                         <button type="button" class="menu_button dsf-keyword-triggers-button">Keyword Triggers</button>
                         <div class="dsf-keyword-triggers-menu">
                             <div class="dsf-menu-close-row"><button type="button" class="menu_button dsf-menu-close" title="Close">×</button></div>
+                            <div class="dsf-trigger-mode-row">${renderKeywordMatchingSelectHtml(normalized.keywordMatching, 'field', targetScope)}</div>
                             <div class="dsf-keyword-trigger-group">
                                 <div class="dsf-label">Activating Triggers (Separate by comma, semicolon, or newline).</div>
                                 <textarea class="text_pole dsf-activating-triggers dsf-trigger-textarea" placeholder="Example: Intro, Pre-Reveal, EVOLUTION_STAGE: Pre-War Arc">${escapeTextarea(normalized.activatingTriggers)}</textarea>
@@ -9016,6 +9113,7 @@ function createBlankFieldForTargetScope(targetScope) {
         activatingKeywordMode: KEYWORD_MODE.ALL,
         enablingKeywordMode: KEYWORD_MODE.ALL,
         disablingKeywordMode: KEYWORD_MODE.ALL,
+        keywordMatching: KEYWORD_MATCHING.WORDS,
         triggerActionInstruction: '',
         content: '',
         enabled: true,
@@ -9826,6 +9924,30 @@ function bindFieldEditHandlers() {
                 const field = findField(state, fieldId);
                 if (field) field.disablingTriggers = this.value;
             }, FIELD_EDIT_INPUT_UPDATE_OPTIONS);
+        });
+
+    $(document)
+        .off(`change.${MODULE_NAME}`, '.dsf-keyword-matching')
+        .on(`change.${MODULE_NAME}`, '.dsf-keyword-matching', function onKeywordMatchingChanged() {
+            const matching = normalizeKeywordMatching(this.value);
+            const target = String($(this).attr('data-dsf-matching-target') || 'field');
+            const targetScope = getFieldTargetScope($(this));
+
+            if (target === 'alter-ego') {
+                updateStateForTargetScope(targetScope, (state) => {
+                    const alterEgo = getActiveAlterEgo(state);
+                    if (alterEgo) alterEgo.keywordMatching = matching;
+                }, { rerender: false });
+                return;
+            }
+
+            const $field = $(this).closest('.dsf-field');
+            const fieldId = String($field.attr('data-field-id') || $field.data('field-id') || '');
+
+            updateStateForTargetScope(targetScope, (state) => {
+                const field = findField(state, fieldId);
+                if (field) field.keywordMatching = matching;
+            }, { rerender: false });
         });
 
     $(document)
