@@ -4112,9 +4112,80 @@ function buildAspectEvolutiaMacroValue() {
     return buildAspectEvolutiaCharacterMacroValue();
 }
 
+// Group chats in "Join character cards" mode: SillyTavern's native marker
+// would contain every member's description. Mirror that, using each member's
+// Dynamic Fields (or native description) and the group's join prefix/suffix.
+function getJoinModeGroup() {
+    const group = getCurrentGroup();
+    const mode = Number(group?.generation_mode ?? 0);
+    return group && mode > 0 && Array.isArray(group.members) && group.members.length ? group : null;
+}
+
+function applyGroupJoinTemplate(template, characterName) {
+    const ctx = getContext();
+    return String(template || '')
+        .replace(/<FIELDNAME>/gi, 'Description')
+        .replace(/\{\{char\}\}/gi, characterName)
+        .replace(/\{\{user\}\}/gi, String(ctx?.name1 || ''));
+}
+
+function getMemberDescriptionForJoin(characterId, generatingCharacterId) {
+    const character = getCharacter(characterId);
+    const cardState = readCardState(characterId);
+
+    if (!cardState.swapEnabled) {
+        return getNativeDescriptionForCharacter(character);
+    }
+
+    if (String(characterId) === String(generatingCharacterId)) {
+        return getPreparedPrompt(characterId);
+    }
+
+    const context = activeGenerationContext;
+    return computeCharacterGeneration(characterId, context?.scanChat ?? getLiveChat(), {
+        includeTriggerActions: false,
+        endExclusive: context?.targetIndex,
+    }).prompt;
+}
+
+function buildGroupJoinedDescription(group, generatingCharacterId) {
+    const disabled = Array.isArray(group.disabled_members) ? group.disabled_members : [];
+    const includeDisabled = Number(group.generation_mode) === 2;
+    const values = [];
+
+    for (const member of group.members) {
+        const characterId = findCharacterIdForMemberReference(member);
+
+        if (characterId === undefined) {
+            continue;
+        }
+
+        if (disabled.includes(member) && String(characterId) !== String(generatingCharacterId) && !includeDisabled) {
+            continue;
+        }
+
+        const value = String(getMemberDescriptionForJoin(characterId, generatingCharacterId) || '').trim();
+
+        if (!value) {
+            continue;
+        }
+
+        const name = getNativeCharacterName(characterId);
+        values.push(`${applyGroupJoinTemplate(group.generation_mode_join_prefix, name)}${value}${applyGroupJoinTemplate(group.generation_mode_join_suffix, name)}`);
+    }
+
+    return values.join('\n');
+}
+
 function buildAspectEvolutiaCharacterMacroValue() {
     finalizeActiveGenerationOnce();
     const characterId = getMacroCharacterId();
+    const joinGroup = getJoinModeGroup();
+
+    if (joinGroup) {
+        return buildGroupJoinedDescription(joinGroup, characterId);
+    }
+
     const character = getCharacter(characterId);
 
     if (!character) {
@@ -4503,130 +4574,109 @@ async function saveAndRenderPromptManager(manager) {
 // Prompt Manager Integration - Character Prompt Toggling
 // -----------------------------------------------------------------------------
 
-async function syncPromptManagerForState(state) {
+// The Evolutia entry returns the native description for every character that
+// does not use Dynamic Fields, so it is switched on (and the native marker off)
+// once per preset, as soon as any character in the chat uses Dynamic Fields.
+// It is not switched back per character: that made group chats depend on the
+// last solo chat. `restoreNative` (used by the Reset actions) undoes it.
+async function syncPromptManagerForState(state, { restoreNative = false } = {}) {
+    if (!restoreNative && !state?.swapEnabled) {
+        return;
+    }
+
+    await setPromptManagerEntries({
+        aspectPromptId: CHARACTER_ASPECT_PROMPT_ID,
+        nativePromptId: NATIVE_DESCRIPTION_PROMPT_ID,
+        ensurePrompt: ensureCharacterAspectPromptExists,
+        ensureOrderEntry: ensureCharacterAspectPromptOrderEntry,
+        useEvolutia: !restoreNative,
+        label: 'Char Description (Evolutia)',
+    });
+}
+
+async function setPromptManagerEntries({ aspectPromptId, nativePromptId, ensurePrompt, ensureOrderEntry, useEvolutia, label }) {
     const manager = getPromptManagerInstance();
 
     if (!manager) {
-        notify('warning', 'Prompt Manager is unavailable. Character Dynamic Fields saved, but prompt toggles could not be synchronized.');
         return;
     }
 
     try {
-        ensureCharacterAspectPromptExists(manager);
+        ensurePrompt(manager);
 
         const order = getPromptOrder(manager);
 
         if (!order.length) {
-            notify('warning', 'Prompt Manager order is unavailable. Open Chat Completion Presets and try again.');
             return;
         }
 
-        const aspectEntry = ensureCharacterAspectPromptOrderEntry(manager);
-        const nativeEntry = getPromptOrderEntryById(order, NATIVE_DESCRIPTION_PROMPT_ID);
+        const aspectEntry = ensureOrderEntry(manager);
+        const nativeEntry = getPromptOrderEntryById(order, nativePromptId);
 
         if (!aspectEntry) {
-            notify('warning', 'Could not create Char Description (Evolutia) Prompt Manager entry.');
+            notify('warning', `Could not create ${label} Prompt Manager entry.`);
             return;
         }
 
-        if (state.swapEnabled) {
-            aspectEntry.enabled = true;
+        const before = JSON.stringify([aspectEntry.enabled, nativeEntry?.enabled]);
+        aspectEntry.enabled = useEvolutia;
 
-            if (nativeEntry) {
-                nativeEntry.enabled = false;
-            }
-        } else {
-            aspectEntry.enabled = false;
-
-            if (nativeEntry) {
-                nativeEntry.enabled = true;
-            }
+        if (nativeEntry) {
+            nativeEntry.enabled = !useEvolutia;
         }
 
         disableLegacyAspectPromptIfPresent(manager);
 
-        await saveAndRenderPromptManager(manager);
+        if (before !== JSON.stringify([aspectEntry.enabled, nativeEntry?.enabled])) {
+            await saveAndRenderPromptManager(manager);
+        }
+
         updateSettingsActionState();
+        warnAboutPresetDescriptionMacros(manager);
     } catch (error) {
-        console.error(`[${MODULE_NAME}] Failed to synchronize Character Prompt Manager entry:`, error);
-        notify('error', 'Failed to synchronize Character Dynamic Fields with Prompt Manager.');
+        console.error(`[${MODULE_NAME}] Failed to synchronize ${label} Prompt Manager entry:`, error);
+        notify('error', `Failed to synchronize ${label} with Prompt Manager.`);
     }
 }
 
+function warnAboutPresetDescriptionMacros() {}
+
+function getCurrentChatUsesCharacterDynamicFields() {
+    return getCurrentChatCharacterIds().some((characterId) => readCardState(characterId).swapEnabled);
+}
+
 async function syncPromptManagerWithActiveState() {
-    const characterId = getActiveCharacterId();
-
-    if (characterId === undefined) {
-        return;
+    if (getCurrentChatUsesCharacterDynamicFields()) {
+        await syncPromptManagerForState({ swapEnabled: true });
     }
-
-    const state = readState(characterId);
-    await syncPromptManagerForState(state);
 }
 
 // -----------------------------------------------------------------------------
 // Prompt Manager Integration - Persona Prompt Toggling
 // -----------------------------------------------------------------------------
 
-async function syncPromptManagerForPersonaState(state) {
+async function syncPromptManagerForPersonaState(state, { restoreNative = false } = {}) {
     const personaId = getActivePersonaId();
 
-    if (!personaId) {
+    if (!restoreNative && !state?.swapEnabled) {
         return;
     }
 
-    const manager = getPromptManagerInstance();
-
-    if (!manager) {
-        notify('warning', 'Prompt Manager is unavailable. Persona Dynamic Fields saved, but prompt toggles could not be synchronized.');
-        return;
-    }
-
-    if (state.swapEnabled && !isPersonaDescriptionInPromptManagerPosition(personaId)) {
+    if (!restoreNative && personaId && !isPersonaDescriptionInPromptManagerPosition(personaId)) {
         notify(
             'warning',
             'Persona Dynamic Fields currently support only the Persona Description Prompt Manager / story-string position. Switch the Persona Description position to Prompt Manager for injection.',
         );
     }
 
-    try {
-        ensurePersonaAspectPromptExists(manager);
-
-        const order = getPromptOrder(manager);
-
-        if (!order.length) {
-            notify('warning', 'Prompt Manager order is unavailable. Open Chat Completion Presets and try again.');
-            return;
-        }
-
-        const aspectEntry = ensurePersonaAspectPromptOrderEntry(manager);
-        const nativeEntry = getPromptOrderEntryById(order, NATIVE_PERSONA_PROMPT_ID);
-
-        if (!aspectEntry) {
-            notify('warning', 'Could not create Persona Description (Evolutia) Prompt Manager entry.');
-            return;
-        }
-
-        if (state.swapEnabled) {
-            aspectEntry.enabled = true;
-
-            if (nativeEntry) {
-                nativeEntry.enabled = false;
-            }
-        } else {
-            aspectEntry.enabled = false;
-
-            if (nativeEntry) {
-                nativeEntry.enabled = true;
-            }
-        }
-
-        await saveAndRenderPromptManager(manager);
-        updateSettingsActionState();
-    } catch (error) {
-        console.error(`[${MODULE_NAME}] Failed to synchronize Persona Prompt Manager entry:`, error);
-        notify('error', 'Failed to synchronize Persona Dynamic Fields with Prompt Manager.');
-    }
+    await setPromptManagerEntries({
+        aspectPromptId: PERSONA_ASPECT_PROMPT_ID,
+        nativePromptId: NATIVE_PERSONA_PROMPT_ID,
+        ensurePrompt: ensurePersonaAspectPromptExists,
+        ensureOrderEntry: ensurePersonaAspectPromptOrderEntry,
+        useEvolutia: !restoreNative,
+        label: 'Persona Description (Evolutia)',
+    });
 }
 
 async function syncPromptManagerWithActivePersonaState() {
@@ -6204,7 +6254,7 @@ async function resetAllCharactersToOutOfBox() {
     stateCache.clear();
     restoreSuppressedDescriptions();
 
-    await syncPromptManagerForState(createOutOfBoxState(getActiveCharacterId()));
+    await syncPromptManagerForState(createOutOfBoxState(getActiveCharacterId()), { restoreNative: true });
 
     renderPanel();
     applyUiVisibility();
@@ -6335,7 +6385,7 @@ async function resetAllPersonasToOutOfBox() {
 
     personaStateCache.clear();
 
-    await syncPromptManagerForPersonaState(createOutOfBoxPersonaState(getActivePersonaId()));
+    await syncPromptManagerForPersonaState(createOutOfBoxPersonaState(getActivePersonaId()), { restoreNative: true });
 
     renderPersonaPanel();
     applyPersonaUiVisibility();
