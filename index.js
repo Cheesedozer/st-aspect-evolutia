@@ -83,12 +83,6 @@ const TRIGGER_SOURCE_LABELS = Object.freeze({
     [TRIGGER_SOURCE.WORLD_INFO_LOREBOOKS]: 'World Info / Lorebooks',
 });
 
-const TRIGGER_ACTION_PHASE = Object.freeze({
-    IDLE: 'idle',
-    ACTION_INJECTED: 'action_injected',
-    CONTENT_READY: 'content_ready',
-});
-
 const ALTER_EGO_BASE_ID = 'base';
 const ALTER_EGO_EXTRA_KEY = 'aspectEvolutia';
 const ALTER_EGO_MESSAGE_KEY = 'alterEgo';
@@ -1435,9 +1429,6 @@ function createDefaultFields() {
             enablingKeywordMode: KEYWORD_MODE.ALL,
             disablingKeywordMode: KEYWORD_MODE.ALL,
             triggerActionInstruction: '',
-            triggerActionPhase: TRIGGER_ACTION_PHASE.IDLE,
-            triggerActionGenerationId: 0,
-            triggerActionEnabledByGeneration: false,
             content: '',
             enabled: true,
         }),
@@ -1451,9 +1442,6 @@ function createDefaultFields() {
             enablingKeywordMode: KEYWORD_MODE.ALL,
             disablingKeywordMode: KEYWORD_MODE.ALL,
             triggerActionInstruction: '',
-            triggerActionPhase: TRIGGER_ACTION_PHASE.IDLE,
-            triggerActionGenerationId: 0,
-            triggerActionEnabledByGeneration: false,
             content: '',
             enabled: true,
         }),
@@ -1467,9 +1455,6 @@ function createDefaultFields() {
             enablingKeywordMode: KEYWORD_MODE.ALL,
             disablingKeywordMode: KEYWORD_MODE.ALL,
             triggerActionInstruction: '',
-            triggerActionPhase: TRIGGER_ACTION_PHASE.IDLE,
-            triggerActionGenerationId: 0,
-            triggerActionEnabledByGeneration: false,
             content: '',
             enabled: true,
         }),
@@ -1544,16 +1529,6 @@ function normalizeTriggerSources(rawSources) {
     return [...new Set(normalized)];
 }
 
-function normalizeTriggerActionPhase(rawPhase) {
-    const phase = String(rawPhase ?? '').trim();
-
-    if (Object.values(TRIGGER_ACTION_PHASE).includes(phase)) {
-        return phase;
-    }
-
-    return TRIGGER_ACTION_PHASE.IDLE;
-}
-
 function shouldIncludeTriggerActions(options = {}) {
     if (options.includeTriggerActions !== undefined) {
         return Boolean(options.includeTriggerActions);
@@ -1565,7 +1540,6 @@ function shouldIncludeTriggerActions(options = {}) {
 function normalizeField(field = {}, options = {}) {
     const activatingTriggers = field.activatingTriggers ?? field.keywords ?? '';
     const legacyKeywordMode = field.keywordMode;
-    const generationId = Number(field.triggerActionGenerationId);
     const includeTriggerActions = shouldIncludeTriggerActions(options);
 
     return {
@@ -1580,9 +1554,6 @@ function normalizeField(field = {}, options = {}) {
         enablingKeywordMode: normalizeKeywordMode(field.enablingKeywordMode ?? legacyKeywordMode),
         disablingKeywordMode: normalizeKeywordMode(field.disablingKeywordMode ?? legacyKeywordMode),
         triggerActionInstruction: includeTriggerActions ? String(field.triggerActionInstruction ?? '') : '',
-        triggerActionPhase: includeTriggerActions ? normalizeTriggerActionPhase(field.triggerActionPhase) : TRIGGER_ACTION_PHASE.IDLE,
-        triggerActionGenerationId: includeTriggerActions && Number.isFinite(generationId) ? Math.max(0, generationId) : 0,
-        triggerActionEnabledByGeneration: includeTriggerActions ? Boolean(field.triggerActionEnabledByGeneration) : false,
         content: String(field.content ?? ''),
     };
 }
@@ -1680,9 +1651,6 @@ function createBlankAlterEgo(existingAlterEgos = [], { characterId = getActiveCh
             ? source.fields.map((field) => normalizeCharacterField({
                 ...field,
                 id: makeId(),
-                triggerActionPhase: TRIGGER_ACTION_PHASE.IDLE,
-                triggerActionGenerationId: 0,
-                triggerActionEnabledByGeneration: false,
             }))
             : createDefaultFields(),
     }, { fallbackName: getNativeCharacterName(characterId), fallbackAvatarKey: getNativeCharacterAvatarKey(characterId) });
@@ -2006,6 +1974,7 @@ function normalizeState(rawState = {}, options = {}) {
 
     const normalizedState = {
         ...clone(DEFAULT_STATE),
+        schemaVersion: CARD_SCHEMA_VERSION,
         swapEnabled: Boolean(source.swapEnabled),
         initializedDefaults: true,
         activeAlterEgoId,
@@ -2053,6 +2022,7 @@ function normalizePersonaState(rawState = {}, options = {}) {
         : alterEgos[0]?.id ?? ALTER_EGO_BASE_ID;
 
     const normalizedState = {
+        schemaVersion: CARD_SCHEMA_VERSION,
         swapEnabled: Boolean(source.swapEnabled),
         initializedDefaults: true,
         activeAlterEgoId,
@@ -2100,9 +2070,6 @@ function prepareImportedFields(fields, existingFields = [], options = {}) {
             ...rawField,
             id: makeId(),
             enabled: rawField?.enabled !== false,
-            triggerActionPhase: TRIGGER_ACTION_PHASE.IDLE,
-            triggerActionGenerationId: 0,
-            triggerActionEnabledByGeneration: false,
             keywordMode: normalizeKeywordMode(rawField?.keywordMode),
         }, {
             ...options,
@@ -2203,9 +2170,6 @@ function importFieldFromJson(field = {}, options = {}) {
         enablingKeywordMode: normalizeKeywordMode(field.enablingKeywordMode ?? field.keywordMode),
         disablingKeywordMode: normalizeKeywordMode(field.disablingKeywordMode ?? field.keywordMode),
         triggerActionInstruction: includeTriggerActions ? joinLinesFromJson(field.triggerActionInstruction) : '',
-        triggerActionPhase: TRIGGER_ACTION_PHASE.IDLE,
-        triggerActionGenerationId: 0,
-        triggerActionEnabledByGeneration: false,
         content: joinLinesFromJson(field.content),
     }, {
         ...options,
@@ -2316,9 +2280,6 @@ function getComparableField(field, options = {}) {
 
     if (includeTriggerActions) {
         comparable.triggerActionInstruction = normalized.triggerActionInstruction;
-        comparable.triggerActionPhase = normalized.triggerActionPhase;
-        comparable.triggerActionGenerationId = normalized.triggerActionGenerationId;
-        comparable.triggerActionEnabledByGeneration = normalized.triggerActionEnabledByGeneration;
     }
 
     return comparable;
@@ -2447,7 +2408,7 @@ function arePersonasOutOfBox(personaIds) {
 // Character Extension Persistence - Read and Cache
 // -----------------------------------------------------------------------------
 
-function readState(characterId = getActiveCharacterId()) {
+function readCardState(characterId = getActiveCharacterId()) {
     const key = getCacheKey(characterId);
 
     if (stateCache.has(key)) {
@@ -2462,8 +2423,16 @@ function readState(characterId = getActiveCharacterId()) {
     return clone(state);
 }
 
+// Returns the character state as seen from the currently open chat: the alter
+// ego and Inject values reflect this chat's runtime state (see Section 6A),
+// while everything else is the card definition. Pass the result back through
+// updateState / scheduleSave / cacheState, which convert it to card form.
+function readState(characterId = getActiveCharacterId()) {
+    return buildViewState(TARGET_SCOPE.CHARACTER, characterId, readCardState(characterId));
+}
+
 function cacheState(characterId, state) {
-    const normalized = normalizeCharacterState(state, { characterId });
+    const normalized = normalizeCharacterState(toCardState(state), { characterId });
     stateCache.set(getCacheKey(characterId), normalized);
     return clone(normalized);
 }
@@ -2485,7 +2454,9 @@ async function saveStateNow(characterId, state) {
     }
 
     try {
-        await ctx.writeExtensionField(characterId, MODULE_NAME, normalizeCharacterState(state, { characterId }));
+        const rawBefore = getCharacter(characterId)?.data?.extensions?.[MODULE_NAME];
+        await backupLegacyStateIfNeeded(`character-${getNativeCharacterAvatarKey(characterId) || characterId}`, rawBefore);
+        await ctx.writeExtensionField(characterId, MODULE_NAME, normalizeCharacterState(toCardState(state), { characterId }));
     } catch (error) {
         console.error(`[${MODULE_NAME}] Failed to save character extension data:`, error);
         notify('error', 'Failed to save Aspect: Evolutia character fields.');
@@ -2516,10 +2487,16 @@ function updateState(mutator, {
     }
 
     const state = readState(characterId);
+    const before = clone(state);
     mutator(state);
 
-    const normalized = normalizeCharacterState(state, { characterId });
+    const manualRuntimeChange = detectManualRuntimeChange(before, state);
+    const normalized = normalizeCharacterState(toCardState(state), { characterId });
     scheduleSave(characterId, normalized);
+
+    if (manualRuntimeChange) {
+        setChatRuntimeOverride(TARGET_SCOPE.CHARACTER, getCharacterRuntimeKey(characterId), manualRuntimeChange);
+    }
 
     if (applyIdentity) {
         applyActiveAlterEgoNameToSillyTavern(characterId);
@@ -2553,7 +2530,7 @@ function updateState(mutator, {
 // Persona Extension Persistence - Read and Cache
 // -----------------------------------------------------------------------------
 
-function readPersonaState(personaId = getActivePersonaId()) {
+function readPersonaCardState(personaId = getActivePersonaId()) {
     const key = getPersonaCacheKey(personaId);
 
     if (personaStateCache.has(key)) {
@@ -2567,8 +2544,12 @@ function readPersonaState(personaId = getActivePersonaId()) {
     return clone(state);
 }
 
+function readPersonaState(personaId = getActivePersonaId()) {
+    return buildViewState(TARGET_SCOPE.PERSONA, personaId, readPersonaCardState(personaId));
+}
+
 function cachePersonaState(personaId, state) {
-    const normalized = normalizePersonaState(state, { personaId });
+    const normalized = normalizePersonaState(toCardState(state), { personaId });
     personaStateCache.set(getPersonaCacheKey(personaId), normalized);
     return clone(normalized);
 }
@@ -2593,7 +2574,8 @@ async function savePersonaStateNow(personaId, state) {
         return;
     }
 
-    const normalizedState = normalizePersonaState(state, { personaId: normalizedPersonaId });
+    await backupLegacyStateIfNeeded(`persona-${normalizedPersonaId}`, getPersonaExtensionStateRecord(normalizedPersonaId));
+    const normalizedState = normalizePersonaState(toCardState(state), { personaId: normalizedPersonaId });
     const savedToSettings = setPersonaExtensionStateRecord(normalizedPersonaId, normalizedState);
 
     if (!savedToSettings) {
@@ -2664,10 +2646,16 @@ function updatePersonaState(mutator, {
     }
 
     const state = readPersonaState(personaId);
+    const before = clone(state);
     mutator(state);
 
-    const normalized = normalizePersonaState(state, { personaId });
+    const manualRuntimeChange = detectManualRuntimeChange(before, state);
+    const normalized = normalizePersonaState(toCardState(state), { personaId });
     schedulePersonaSave(personaId, normalized);
+
+    if (manualRuntimeChange) {
+        setChatRuntimeOverride(TARGET_SCOPE.PERSONA, getPersonaRuntimeKey(personaId), manualRuntimeChange);
+    }
 
     if (rerender) {
         renderPersonaPanel();
@@ -2705,6 +2693,404 @@ function clearRuntimeCachesForCharacterAndPersona() {
     clearAllStateCaches();
     clearAllPreparedPrompts();
     clearGenerationLifecycle();
+}
+
+// ============================================================================
+// Section 6A. Chat Runtime State
+// ============================================================================
+// Purpose:
+// - Keep story state (which fields are on, which alter ego is active, whether a
+//   Trigger Action already happened) with the chat instead of the card.
+// - Each generated reply carries a snapshot of the state it was written with,
+//   stored in message.extra (SillyTavern keeps extra per swipe). The state
+//   for the next generation is derived from the newest snapshot before it, so
+//   swipes, deletions, edits and branches follow the chat history.
+// - Manual edits made while a chat is open (Inject checkbox, alter ego select)
+//   are recorded in chat_metadata and apply until a newer snapshot exists.
+// - The card keeps only definitions and defaults for chats without snapshots.
+// ============================================================================
+
+const CARD_SCHEMA_VERSION = 2;
+const RUNTIME_EXTRA_KEY = 'runtime';
+const RUNTIME_METADATA_KEY = 'aspectEvolutia';
+const legacyBackupsDone = new Set();
+const runtimeNowCache = new Map();
+
+function getCharacterRuntimeKey(characterId) {
+    const avatar = getNativeCharacterAvatarKey(characterId);
+
+    if (avatar && avatar !== 'none') {
+        return avatar;
+    }
+
+    return characterId === undefined || characterId === null || characterId === '' ? '' : `chid:${characterId}`;
+}
+
+function getPersonaRuntimeKey(personaId) {
+    return normalizePersonaId(personaId) || '';
+}
+
+function getRuntimeBucket(scope) {
+    return scope === TARGET_SCOPE.PERSONA ? 'personas' : 'characters';
+}
+
+function getMessageRuntimeRecord(message) {
+    const record = message?.extra?.[ALTER_EGO_EXTRA_KEY]?.[RUNTIME_EXTRA_KEY];
+    return record && typeof record === 'object' ? record : null;
+}
+
+function findRuntimeSnapshot(scope, key, chat, endExclusive = undefined) {
+    if (!key || !Array.isArray(chat)) {
+        return null;
+    }
+
+    const bucket = getRuntimeBucket(scope);
+    const end = Math.min(endExclusive ?? chat.length, chat.length);
+
+    for (let index = end - 1; index >= 0; index -= 1) {
+        const snapshot = getMessageRuntimeRecord(chat[index])?.[bucket]?.[key];
+
+        if (snapshot && typeof snapshot === 'object') {
+            return { index, snapshot };
+        }
+    }
+
+    return null;
+}
+
+function getLiveChat() {
+    const chat = getContext()?.chat;
+    return Array.isArray(chat) ? chat : [];
+}
+
+function getChatMetadataRoot({ create = false } = {}) {
+    const metadata = getContext()?.chatMetadata;
+
+    if (!metadata || typeof metadata !== 'object') {
+        return null;
+    }
+
+    if (!metadata[RUNTIME_METADATA_KEY] || typeof metadata[RUNTIME_METADATA_KEY] !== 'object') {
+        if (!create) {
+            return null;
+        }
+
+        metadata[RUNTIME_METADATA_KEY] = {};
+    }
+
+    return metadata[RUNTIME_METADATA_KEY];
+}
+
+function getChatRuntimeOverride(scope, key) {
+    const override = getChatMetadataRoot()?.overrides?.[getRuntimeBucket(scope)]?.[key];
+    return override && typeof override === 'object' ? override : null;
+}
+
+function isChatOpenForRuntime() {
+    const ctx = getContext();
+    return Boolean(ctx?.chatMetadata && Array.isArray(ctx?.chat) && (ctx.chatId || ctx.getCurrentChatId?.()));
+}
+
+function setChatRuntimeOverride(scope, key, change) {
+    if (!key || !change || !isChatOpenForRuntime()) {
+        return;
+    }
+
+    const root = getChatMetadataRoot({ create: true });
+
+    if (!root) {
+        return;
+    }
+
+    root.overrides ??= {};
+    const bucket = (root.overrides[getRuntimeBucket(scope)] ??= {});
+    const chatLength = getLiveChat().length;
+    const existing = bucket[key];
+    const latest = findRuntimeSnapshot(scope, key, getLiveChat());
+    // An override older than the newest snapshot was already folded into it.
+    const stale = !existing || (latest && latest.index >= Number(existing.at ?? 0));
+    const next = stale ? { fields: {} } : existing;
+
+    next.at = chatLength;
+
+    if (change.alterEgoId) {
+        next.alterEgoId = change.alterEgoId;
+    }
+
+    if (change.fields && typeof change.fields === 'object') {
+        next.fields = { ...(next.fields || {}), ...change.fields };
+    }
+
+    bucket[key] = next;
+    invalidateRuntimeCache();
+    getContext()?.saveMetadataDebounced?.();
+}
+
+// Builds the runtime state for one character/persona from (newest first):
+// a manual chat override newer than the latest snapshot, the latest snapshot
+// before `endExclusive`, then the card defaults.
+function resolveRuntime(scope, key, cardState, { chat = getLiveChat(), endExclusive = undefined, includeOverride = true } = {}) {
+    const found = findRuntimeSnapshot(scope, key, chat, endExclusive);
+    const override = includeOverride ? getChatRuntimeOverride(scope, key) : null;
+    const overrideApplies = Boolean(override) && (!found || found.index < Number(override.at ?? 0));
+    const alterEgoIds = new Set((cardState.alterEgos || []).map((alterEgo) => alterEgo.id));
+
+    let alterEgoId = alterEgoIds.has(cardState.activeAlterEgoId) ? cardState.activeAlterEgoId : (cardState.alterEgos?.[0]?.id ?? ALTER_EGO_BASE_ID);
+    let alterEgoSource = 'default';
+
+    if (found && alterEgoIds.has(found.snapshot.alterEgoId)) {
+        alterEgoId = found.snapshot.alterEgoId;
+        alterEgoSource = 'chat';
+    }
+
+    if (overrideApplies && alterEgoIds.has(override.alterEgoId)) {
+        alterEgoId = override.alterEgoId;
+        alterEgoSource = 'manual';
+    }
+
+    const fields = {};
+
+    for (const alterEgo of cardState.alterEgos || []) {
+        for (const field of alterEgo.fields || []) {
+            const saved = found?.snapshot?.fields?.[field.id];
+            const manual = overrideApplies ? override.fields?.[field.id] : undefined;
+            let enabled = field.enabled !== false;
+            let source = 'default';
+
+            if (saved && typeof saved.enabled === 'boolean') {
+                enabled = saved.enabled;
+                source = 'chat';
+            }
+
+            if (typeof manual === 'boolean') {
+                enabled = manual;
+                source = 'manual';
+            }
+
+            fields[field.id] = {
+                enabled,
+                actionKey: String(saved?.actionKey || ''),
+                reason: source === 'manual' ? 'Set by hand in this chat' : String(saved?.reason || ''),
+                reasonMessage: source === 'chat' && Number.isInteger(saved?.reasonMessage) ? saved.reasonMessage : null,
+                source,
+            };
+        }
+    }
+
+    return {
+        alterEgoId,
+        alterEgoSource,
+        fields,
+        baseIndex: found ? found.index : -1,
+    };
+}
+
+function serializeRuntime(runtime) {
+    const fields = {};
+
+    for (const [fieldId, value] of Object.entries(runtime?.fields || {})) {
+        fields[fieldId] = {
+            enabled: Boolean(value.enabled),
+            ...(value.actionKey ? { actionKey: value.actionKey } : {}),
+            ...(value.reason && value.source !== 'manual' ? { reason: value.reason } : {}),
+            ...(value.source === 'manual' ? { reason: 'Set by hand in this chat' } : {}),
+            ...(Number.isInteger(value.reasonMessage) ? { reasonMessage: value.reasonMessage } : {}),
+        };
+    }
+
+    return {
+        v: 1,
+        alterEgoId: runtime?.alterEgoId,
+        fields,
+    };
+}
+
+function invalidateRuntimeCache() {
+    runtimeNowCache.clear();
+}
+
+function getCurrentRuntime(scope, key, cardState) {
+    if (!key) {
+        return resolveRuntime(scope, key, cardState, { chat: [], includeOverride: false });
+    }
+
+    const chat = getLiveChat();
+    const cacheKey = `${scope}:${key}:${chat.length}:${chat.at(-1)?.swipe_id ?? ''}:${JSON.stringify(cardState.alterEgos?.map((alterEgo) => [alterEgo.id, alterEgo.fields?.map((field) => [field.id, field.enabled])]))}:${cardState.activeAlterEgoId}`;
+
+    if (runtimeNowCache.has(cacheKey)) {
+        return clone(runtimeNowCache.get(cacheKey));
+    }
+
+    const runtime = resolveRuntime(scope, key, cardState, { chat });
+    runtimeNowCache.set(cacheKey, runtime);
+    return clone(runtime);
+}
+
+function getRuntimeKeyForScope(scope, entityId) {
+    return scope === TARGET_SCOPE.PERSONA ? getPersonaRuntimeKey(entityId) : getCharacterRuntimeKey(entityId);
+}
+
+// Card state -> chat-aware view. The __view marker lets toCardState() undo the
+// runtime values when the view is saved back to the card.
+function buildViewState(scope, entityId, cardState) {
+    const view = cardState;
+    const runtime = getCurrentRuntime(scope, getRuntimeKeyForScope(scope, entityId), cardState);
+    const cardEnabled = {};
+    const effective = {};
+
+    for (const alterEgo of view.alterEgos || []) {
+        for (const field of alterEgo.fields || []) {
+            cardEnabled[field.id] = field.enabled !== false;
+            effective[field.id] = runtime.fields[field.id]?.enabled ?? cardEnabled[field.id];
+            field.enabled = effective[field.id];
+        }
+    }
+
+    view.__view = {
+        defaultAlterEgoId: cardState.activeAlterEgoId,
+        viewAlterEgoId: runtime.alterEgoId,
+        cardEnabled,
+        effective,
+        runtime,
+    };
+
+    view.activeAlterEgoId = runtime.alterEgoId;
+    view.fields = getActiveAlterEgoFields(view);
+    return view;
+}
+
+function toCardState(state) {
+    if (!state || typeof state !== 'object' || !state.__view) {
+        return state;
+    }
+
+    const card = clone(state);
+    const view = card.__view;
+    delete card.__view;
+
+    const viewAlterEgo = (card.alterEgos || []).find((alterEgo) => alterEgo.id === card.activeAlterEgoId);
+
+    if (viewAlterEgo && Array.isArray(card.fields)) {
+        viewAlterEgo.fields = card.fields;
+    }
+
+    for (const alterEgo of card.alterEgos || []) {
+        for (const field of alterEgo.fields || []) {
+            if (!hasOwn(view.effective, field.id)) {
+                continue;
+            }
+
+            // Unchanged since the view was built: restore the card default.
+            // Changed by the user: the new value becomes the card default too.
+            if (field.enabled === view.effective[field.id]) {
+                field.enabled = view.cardEnabled[field.id];
+            }
+        }
+    }
+
+    const alterEgoIds = new Set((card.alterEgos || []).map((alterEgo) => alterEgo.id));
+    const switchedByUser = card.activeAlterEgoId !== view.viewAlterEgoId;
+
+    if (!switchedByUser && alterEgoIds.has(view.defaultAlterEgoId)) {
+        card.activeAlterEgoId = view.defaultAlterEgoId;
+    }
+
+    card.fields = getActiveAlterEgoFields(card);
+    return card;
+}
+
+function detectManualRuntimeChange(before, after) {
+    if (!before?.__view || !after) {
+        return null;
+    }
+
+    const change = { fields: {} };
+    let changed = false;
+
+    if (after.activeAlterEgoId && after.activeAlterEgoId !== before.activeAlterEgoId) {
+        change.alterEgoId = after.activeAlterEgoId;
+        changed = true;
+    }
+
+    const beforeFields = new Map((before.fields || []).map((field) => [field.id, field]));
+
+    for (const field of after.fields || []) {
+        const previous = beforeFields.get(field.id);
+
+        if (previous && (previous.enabled !== false) !== (field.enabled !== false)) {
+            change.fields[field.id] = field.enabled !== false;
+            changed = true;
+        }
+    }
+
+    return changed ? change : null;
+}
+
+function stampRuntimeOnMessage(messageIndex, { characterKey, characterRuntime, personaKey, personaRuntime } = {}) {
+    const chat = getLiveChat();
+    const message = chat[Number(messageIndex)];
+
+    if (!message) {
+        return false;
+    }
+
+    if (!message.extra || typeof message.extra !== 'object') {
+        message.extra = {};
+    }
+
+    const extensionExtra = (message.extra[ALTER_EGO_EXTRA_KEY] ??= {});
+    const record = (extensionExtra[RUNTIME_EXTRA_KEY] ??= {});
+
+    if (characterKey && characterRuntime) {
+        (record.characters ??= {})[characterKey] = characterRuntime;
+    }
+
+    if (personaKey && personaRuntime) {
+        (record.personas ??= {})[personaKey] = personaRuntime;
+    }
+
+    const swipeInfo = message.swipe_info?.[message.swipe_id];
+
+    if (swipeInfo && typeof swipeInfo === 'object') {
+        swipeInfo.extra = clone(message.extra);
+    }
+
+    invalidateRuntimeCache();
+    return true;
+}
+
+// One-time copy of pre-v2 data to the user's Files folder before the first
+// write in the new format. The original data is never modified in place.
+async function backupLegacyStateIfNeeded(label, rawState) {
+    if (!rawState || typeof rawState !== 'object' || Number(rawState.schemaVersion) >= CARD_SCHEMA_VERSION) {
+        return;
+    }
+
+    const safeLabel = String(label).replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 80);
+
+    if (legacyBackupsDone.has(safeLabel)) {
+        return;
+    }
+
+    legacyBackupsDone.add(safeLabel);
+
+    try {
+        const json = JSON.stringify({ type: 'aspect_evolutia_legacy_backup', createdAt: new Date().toISOString(), label, data: rawState }, null, 2);
+        const data = btoa(unescape(encodeURIComponent(json)));
+        const ctx = getContext();
+        const headers = typeof ctx?.getRequestHeaders === 'function' ? ctx.getRequestHeaders() : { 'Content-Type': 'application/json' };
+        const response = await fetch('/api/files/upload', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ name: `aspect-evolutia-backup-${safeLabel}-v1.json`, data }),
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+    } catch (error) {
+        console.warn(`[${MODULE_NAME}] Could not back up legacy data for ${label}:`, error);
+    }
 }
 
 // ============================================================================
@@ -3058,6 +3444,21 @@ function triggerListMatches(rawTriggers, scanText, keywordMode = KEYWORD_MODE.AL
     return loweredTriggers.some((trigger) => scanText.includes(trigger));
 }
 
+// Returns the keyword(s) that matched, or '' when the list did not match.
+function findMatchingTrigger(rawTriggers, scanText, keywordMode = KEYWORD_MODE.ALL) {
+    const triggers = splitKeywords(rawTriggers);
+
+    if (!triggers.length || !triggerListMatches(rawTriggers, scanText, keywordMode)) {
+        return '';
+    }
+
+    if (keywordMode === KEYWORD_MODE.ALL) {
+        return triggers.join(', ');
+    }
+
+    return triggers.find((trigger) => triggerListMatches(trigger, scanText, KEYWORD_MODE.ANY)) || triggers[0];
+}
+
 function alterEgoSwapTriggersMatch(alterEgo, chatOverride = undefined) {
     const normalized = normalizeAlterEgo(alterEgo);
 
@@ -3080,26 +3481,6 @@ function findTriggeredAlterEgo(state, chatOverride = undefined) {
     return normalized.alterEgos.find((alterEgo) => alterEgoSwapTriggersMatch(alterEgo, chatOverride)) ?? null;
 }
 
-function applyTriggeredAlterEgoSwapToState(state, chatOverride = undefined) {
-    const normalized = normalizeCharacterState(state);
-    const triggeredAlterEgo = findTriggeredAlterEgo(normalized, chatOverride);
-
-    if (!triggeredAlterEgo || triggeredAlterEgo.id === normalized.activeAlterEgoId) {
-        return {
-            state: normalized,
-            changed: false,
-        };
-    }
-
-    normalized.activeAlterEgoId = triggeredAlterEgo.id;
-    normalized.fields = triggeredAlterEgo.fields;
-
-    return {
-        state: normalized,
-        changed: true,
-    };
-}
-
 function personaAlterEgoSwapTriggersMatch(alterEgo, chatOverride = undefined) {
     const normalized = normalizePersonaAlterEgo(alterEgo);
 
@@ -3120,55 +3501,6 @@ function findTriggeredPersonaAlterEgo(state, chatOverride = undefined) {
     const normalized = normalizePersonaState(state);
 
     return normalized.alterEgos.find((alterEgo) => personaAlterEgoSwapTriggersMatch(alterEgo, chatOverride)) ?? null;
-}
-
-function applyTriggeredPersonaAlterEgoSwapToState(state, chatOverride = undefined) {
-    const normalized = normalizePersonaState(state);
-    const triggeredAlterEgo = findTriggeredPersonaAlterEgo(normalized, chatOverride);
-
-    if (!triggeredAlterEgo || triggeredAlterEgo.id === normalized.activeAlterEgoId) {
-        return {
-            state: normalized,
-            changed: false,
-        };
-    }
-
-    normalized.activeAlterEgoId = triggeredAlterEgo.id;
-    normalized.fields = triggeredAlterEgo.fields;
-
-    return {
-        state: normalized,
-        changed: true,
-    };
-}
-
-function activationTriggersAreSatisfied(field, scanText, options = {}) {
-    const normalized = normalizeField(field, options);
-    const triggers = splitKeywords(normalized.activatingTriggers);
-
-    if (!triggers.length) {
-        return true;
-    }
-
-    return triggerListMatches(
-        normalized.activatingTriggers,
-        scanText,
-        normalized.activatingKeywordMode,
-    );
-}
-
-function activationTriggersFired(field, scanText, options = {}) {
-    const normalized = normalizeField(field, options);
-
-    if (!splitKeywords(normalized.activatingTriggers).length) {
-        return false;
-    }
-
-    return triggerListMatches(
-        normalized.activatingTriggers,
-        scanText,
-        normalized.activatingKeywordMode,
-    );
 }
 
 // -----------------------------------------------------------------------------
@@ -3232,93 +3564,45 @@ function clearAllPreparedPrompts() {
 }
 
 // -----------------------------------------------------------------------------
-// Dynamic Field Matching and Prompt Assembly - Trigger Action State
+// Dynamic Field Matching and Prompt Assembly - Field Evaluation
 // -----------------------------------------------------------------------------
 
-function applyMutableFieldState(field, updates) {
-    Object.assign(field, updates);
+// Identifies one trigger occurrence (the scanned text that fired), so a Trigger
+// Action is performed once per occurrence and not again on the next reply.
+function getTriggerOccurrenceKey(scanText) {
+    let hash = 5381;
+    const text = String(scanText || '');
+
+    for (let index = 0; index < text.length; index += 1) {
+        hash = ((hash << 5) + hash + text.charCodeAt(index)) | 0;
+    }
+
+    return `${text.length}:${(hash >>> 0).toString(36)}`;
 }
 
-function resetTriggerActionLifecycle(field) {
-    applyMutableFieldState(field, {
-        triggerActionPhase: TRIGGER_ACTION_PHASE.IDLE,
-        triggerActionGenerationId: 0,
-        triggerActionEnabledByGeneration: false,
-    });
-}
-
-function markTriggerActionInjectedForGeneration(field, generationId, enabledByGeneration = false) {
-    applyMutableFieldState(field, {
-        triggerActionPhase: TRIGGER_ACTION_PHASE.ACTION_INJECTED,
-        triggerActionGenerationId: generationId,
-        triggerActionEnabledByGeneration: Boolean(enabledByGeneration),
-    });
-}
-
-function markContentReadyForNextGeneration(field, generationId, enabledByGeneration = false) {
-    applyMutableFieldState(field, {
-        triggerActionPhase: TRIGGER_ACTION_PHASE.CONTENT_READY,
-        triggerActionGenerationId: generationId,
-        triggerActionEnabledByGeneration: Boolean(enabledByGeneration),
-    });
-}
-
-function isActionInjectedForThisGeneration(field, generationId) {
-    const normalized = normalizeCharacterField(field);
-
-    return (
-        normalized.triggerActionPhase === TRIGGER_ACTION_PHASE.ACTION_INJECTED &&
-        normalized.triggerActionGenerationId === generationId
-    );
-}
-
-function isActionInjectedFromEarlierGeneration(field, generationId) {
-    const normalized = normalizeCharacterField(field);
-
-    return (
-        normalized.triggerActionPhase === TRIGGER_ACTION_PHASE.ACTION_INJECTED &&
-        normalized.triggerActionGenerationId > 0 &&
-        normalized.triggerActionGenerationId !== generationId
-    );
-}
-
-function isContentReadyForThisGeneration(field, generationId) {
-    const normalized = normalizeCharacterField(field);
-
-    return (
-        normalized.triggerActionPhase === TRIGGER_ACTION_PHASE.CONTENT_READY &&
-        normalized.triggerActionGenerationId !== generationId
-    );
-}
-
-function isContentLockedUntilNextGeneration(field, generationId) {
-    const normalized = normalizeCharacterField(field);
-
-    return (
-        normalized.triggerActionPhase === TRIGGER_ACTION_PHASE.CONTENT_READY &&
-        normalized.triggerActionGenerationId === generationId
-    );
-}
-
-// -----------------------------------------------------------------------------
-// Dynamic Field Matching and Prompt Assembly - Entry Selection
-// -----------------------------------------------------------------------------
-
-function buildFieldPromptEntriesForGeneration(state, {
+// Decides which entries to inject for one generation and updates `runtime`
+// (the chat state) in place. `runtime.fields[id]` = { enabled, actionKey, reason }.
+//
+// Rules:
+// - Disabling Trigger matched: Inject off.
+// - Enabling Trigger matched while off: Inject on. With a Trigger Action, this
+//   reply gets the action; Content follows from the next reply on.
+// - Activating Triggers (if any) gate Content to turns where they match. With a
+//   Trigger Action, the action is performed once per trigger occurrence.
+function buildFieldPromptEntriesForGeneration(fields, runtime, {
     targetScope = TARGET_SCOPE.CHARACTER,
-    characterId,
-    personaId,
-    generationId,
     chat,
-    mutate = false,
     includeTriggerActions = true,
+    messageIndex = null,
 } = {}) {
     const entries = [];
     let changed = false;
     const isPersona = targetScope === TARGET_SCOPE.PERSONA;
     const normalizeForTarget = isPersona ? normalizePersonaField : normalizeCharacterField;
 
-    for (const field of state.fields) {
+    runtime.fields ??= {};
+
+    for (const field of fields || []) {
         const normalized = normalizeForTarget(field);
         const scanText = buildScanText(normalized.triggerSources, chat);
         const content = normalized.content.trim();
@@ -3327,75 +3611,39 @@ function buildFieldPromptEntriesForGeneration(state, {
         // Read-only runs (quiet / impersonate) must not show content whose Trigger
         // Action has not happened yet in the story.
         const actionSuppressed = Boolean(configuredTriggerAction) && !includeTriggerActions;
+        const state = (runtime.fields[normalized.id] ??= { enabled: normalized.enabled, actionKey: '', reason: '', source: 'default' });
+        const setState = (updates) => {
+            Object.assign(state, updates, { source: 'chat', reasonMessage: messageIndex });
+            changed = true;
+        };
 
-        const disablingTriggered = triggerListMatches(
-            normalized.disablingTriggers,
-            scanText,
-            normalized.disablingKeywordMode,
-        );
+        const disablingMatch = findMatchingTrigger(normalized.disablingTriggers, scanText, normalized.disablingKeywordMode);
 
-        if (disablingTriggered) {
-            if (mutate && (
-                field.enabled !== false ||
-                normalized.triggerActionPhase !== TRIGGER_ACTION_PHASE.IDLE ||
-                normalized.triggerActionGenerationId !== 0 ||
-                normalized.triggerActionEnabledByGeneration !== false
-            )) {
-                applyMutableFieldState(field, { enabled: false });
-                resetTriggerActionLifecycle(field);
-                changed = true;
+        if (disablingMatch) {
+            if (state.enabled || state.actionKey) {
+                setState({ enabled: false, actionKey: '', reason: `Disabled by "${disablingMatch}"` });
             }
 
             continue;
         }
 
-        const enablingTriggered = triggerListMatches(
-            normalized.enablingTriggers,
-            scanText,
-            normalized.enablingKeywordMode,
-        );
+        const enablingMatch = !state.enabled
+            ? findMatchingTrigger(normalized.enablingTriggers, scanText, normalized.enablingKeywordMode)
+            : '';
+        const activatingMatch = findMatchingTrigger(normalized.activatingTriggers, scanText, normalized.activatingKeywordMode);
+        const activationSatisfied = !splitKeywords(normalized.activatingTriggers).length || Boolean(activatingMatch);
+        const occurrenceKey = getTriggerOccurrenceKey(scanText);
 
-        const enablingTransition = normalized.enabled === false && enablingTriggered;
-        const activatingTriggered = activationTriggersFired(normalized, scanText, {
-            targetScope,
-            includeTriggerActions: !isPersona,
-        });
-        const activationSatisfied = activationTriggersAreSatisfied(normalized, scanText, {
-            targetScope,
-            includeTriggerActions: !isPersona,
-        });
-
-        // Enabling Triggers turn Inject on.
-        //
-        // Characters:
-        // - If Trigger Actions has text, Trigger Action must inject first and Content
-        //   must wait until the next completed generation.
-        // - If Trigger Actions is empty, Content may inject immediately if normal
-        //   content conditions allow it.
-        //
-        // Personas:
-        // - Trigger Actions are intentionally unsupported.
-        // - Enabling Triggers simply turn Inject on, and Content may inject immediately
-        //   if normal content conditions allow it.
-        if (enablingTransition) {
-            if (mutate) {
-                applyMutableFieldState(field, { enabled: true });
-                resetTriggerActionLifecycle(field);
-                changed = true;
-            }
-
+        if (enablingMatch) {
             if (actionSuppressed) {
                 continue;
             }
 
-            if (!isPersona && triggerActionInstruction) {
+            setState({ enabled: true, actionKey: '', reason: `Enabled by "${enablingMatch}"` });
+
+            if (triggerActionInstruction) {
                 entries.push(formatTriggerActionForPrompt(normalized, triggerActionInstruction));
-
-                if (mutate) {
-                    markTriggerActionInjectedForGeneration(field, generationId, true);
-                    changed = true;
-                }
-
+                state.actionKey = occurrenceKey;
                 continue;
             }
 
@@ -3406,92 +3654,21 @@ function buildFieldPromptEntriesForGeneration(state, {
             continue;
         }
 
-        if (isPersona) {
-            if (!normalized.enabled || !content) {
+        if (!state.enabled) {
+            continue;
+        }
+
+        if (configuredTriggerAction && activatingMatch && state.actionKey !== occurrenceKey) {
+            if (actionSuppressed) {
                 continue;
             }
 
-            if (activationSatisfied) {
-                entries.push(formatFieldForPrompt(normalized));
-            }
-
-            continue;
-        }
-
-        // If Trigger Action already emitted during this generation, repeated prompt
-        // preparation for the same generation must keep returning Trigger Action,
-        // never Content.
-        if (isActionInjectedForThisGeneration(normalized, generationId)) {
-            if (triggerActionInstruction) {
-                entries.push(formatTriggerActionForPrompt(normalized, triggerActionInstruction));
-            } else if (mutate) {
-                resetTriggerActionLifecycle(field);
-                changed = true;
-            }
-
-            continue;
-        }
-
-        // If a prior generation emitted Trigger Action but the generation-end event
-        // failed to promote it, recover by treating it as Content-ready now.
-        if (isActionInjectedFromEarlierGeneration(normalized, generationId)) {
-            if (normalized.enabled && content && activationSatisfied) {
-                entries.push(formatFieldForPrompt(normalized));
-            }
-
-            if (mutate) {
-                resetTriggerActionLifecycle(field);
-                changed = true;
-            }
-
-            continue;
-        }
-
-        // If Content was made ready by a previous completed generation, inject it now.
-        if (isContentReadyForThisGeneration(normalized, generationId)) {
-            if (normalized.enabled && content && activationSatisfied) {
-                entries.push(formatFieldForPrompt(normalized));
-            }
-
-            if (mutate) {
-                resetTriggerActionLifecycle(field);
-                changed = true;
-            }
-
-            continue;
-        }
-
-        // If Content was marked ready during this same generation, keep it locked.
-        if (isContentLockedUntilNextGeneration(normalized, generationId)) {
-            continue;
-        }
-
-        if (!normalized.enabled) {
-            continue;
-        }
-
-        // Character Activating Triggers can fire Trigger Action repeatedly, but still
-        // block same-generation Content when Trigger Action text exists.
-        if (actionSuppressed && activatingTriggered) {
-            continue;
-        }
-
-        if (triggerActionInstruction && activatingTriggered) {
             entries.push(formatTriggerActionForPrompt(normalized, triggerActionInstruction));
-
-            if (mutate) {
-                markTriggerActionInjectedForGeneration(field, generationId, false);
-                changed = true;
-            }
-
+            setState({ actionKey: occurrenceKey, reason: `Trigger Action by "${activatingMatch}"` });
             continue;
         }
 
-        if (!content) {
-            continue;
-        }
-
-        if (activationSatisfied) {
+        if (content && activationSatisfied) {
             entries.push(formatFieldForPrompt(normalized));
         }
     }
@@ -3529,8 +3706,8 @@ function formatTriggerActionForPrompt(field, instruction) {
     ].join('\n');
 }
 
-function wrapDynamicFieldsPrompt(characterId, fieldText) {
-    const characterName = getCharacterName(characterId);
+function wrapDynamicFieldsPrompt(characterId, fieldText, nameOverride = '') {
+    const characterName = nameOverride || getCharacterName(characterId);
 
     return [
         `[CHARACTER DEFINITIONS]`,
@@ -3542,8 +3719,8 @@ function wrapDynamicFieldsPrompt(characterId, fieldText) {
     ].join('\n');
 }
 
-function wrapPersonaDynamicFieldsPrompt(personaId, fieldText) {
-    const personaName = getPersonaName(personaId);
+function wrapPersonaDynamicFieldsPrompt(personaId, fieldText, nameOverride = '') {
+    const personaName = nameOverride || getPersonaName(personaId);
 
     return [
         `[USER PERSONA DEFINITIONS]`,
@@ -3559,48 +3736,40 @@ function wrapPersonaDynamicFieldsPrompt(personaId, fieldText) {
 // Dynamic Field Matching and Prompt Assembly - Character Prompt Preparation
 // -----------------------------------------------------------------------------
 
-function prepareReplacementPromptForGeneration(characterId, generationId, chat, { mutate = true, includeTriggerActions = true } = {}) {
-    let state = readState(characterId);
+// Computes what one generation should inject for a character, starting from the
+// chat state before `endExclusive` (the message being written or swiped).
+// Returns { prompt, runtime } — `runtime` is the state to stamp on the reply.
+function computeCharacterGeneration(characterId, chat, { includeTriggerActions = true, endExclusive = undefined } = {}) {
+    const cardState = readCardState(characterId);
 
-    if (!state.swapEnabled) {
-        return '';
+    if (!cardState.swapEnabled) {
+        return { prompt: '', runtime: null, alterEgo: null };
     }
 
-    const alterEgoSwapResult = applyTriggeredAlterEgoSwapToState(state, chat);
-    state = alterEgoSwapResult.state;
+    const key = getCharacterRuntimeKey(characterId);
+    const runtime = resolveRuntime(TARGET_SCOPE.CHARACTER, key, cardState, { endExclusive });
+    const triggered = findTriggeredAlterEgo(cardState, chat);
 
-    const { entries, changed } = buildFieldPromptEntriesForGeneration(state, {
+    if (triggered && triggered.id !== runtime.alterEgoId) {
+        runtime.alterEgoId = triggered.id;
+    }
+
+    const alterEgo = cardState.alterEgos.find((entry) => entry.id === runtime.alterEgoId) ?? cardState.alterEgos[0];
+    const { entries } = buildFieldPromptEntriesForGeneration(alterEgo?.fields || [], runtime, {
         targetScope: TARGET_SCOPE.CHARACTER,
-        characterId,
-        generationId,
         chat,
-        mutate,
         includeTriggerActions,
+        messageIndex: endExclusive ?? getLiveChat().length,
     });
 
-    if (mutate && (changed || alterEgoSwapResult.changed)) {
-        scheduleSave(characterId, state);
+    const name = String(alterEgo?.name || '').trim() || getNativeCharacterName(characterId);
+    const prompt = entries.length ? wrapDynamicFieldsPrompt(characterId, entries.join('\n\n'), name) : '';
 
-        if (alterEgoSwapResult.changed) {
-            applyActiveAlterEgoNameToSillyTavern(characterId);
-            refreshActiveAlterEgoVisualIdentity(characterId);
-        }
+    return { prompt, runtime: serializeRuntime(runtime), alterEgo };
+}
 
-        setTimeout(() => {
-            renderPanel();
-            updateTokenEstimate();
-            updateSettingsActionState();
-        }, 0);
-    }
-
-    if (!entries.length) {
-        return '';
-    }
-
-    return wrapDynamicFieldsPrompt(
-        characterId,
-        entries.join('\n\n'),
-    );
+function prepareReplacementPromptForGeneration(characterId, generationId, chat, options = {}) {
+    return computeCharacterGeneration(characterId, chat, options).prompt;
 }
 
 function buildReplacementPrompt(characterId = getActiveCharacterId()) {
@@ -3632,53 +3801,43 @@ function buildAspectEvolutiaCharacterMacroValue() {
 // Dynamic Field Matching and Prompt Assembly - Persona Prompt Preparation
 // -----------------------------------------------------------------------------
 
-function preparePersonaReplacementPromptForGeneration(personaId, generationId, chat, { mutate = true } = {}) {
+function computePersonaGeneration(personaId, chat, { endExclusive = undefined } = {}) {
     const normalizedPersonaId = normalizePersonaId(personaId);
 
     if (!normalizedPersonaId) {
-        return '';
+        return { prompt: '', runtime: null, alterEgo: null };
     }
 
-    let state = readPersonaState(normalizedPersonaId);
+    const cardState = readPersonaCardState(normalizedPersonaId);
 
-    if (!state.swapEnabled) {
-        return '';
+    if (!cardState.swapEnabled) {
+        return { prompt: '', runtime: null, alterEgo: null };
     }
 
-    const alterEgoSwapResult = applyTriggeredPersonaAlterEgoSwapToState(state, chat);
-    state = alterEgoSwapResult.state;
+    const key = getPersonaRuntimeKey(normalizedPersonaId);
+    const runtime = resolveRuntime(TARGET_SCOPE.PERSONA, key, cardState, { endExclusive });
+    const triggered = findTriggeredPersonaAlterEgo(cardState, chat);
 
-    const { entries, changed } = buildFieldPromptEntriesForGeneration(state, {
+    if (triggered && triggered.id !== runtime.alterEgoId) {
+        runtime.alterEgoId = triggered.id;
+    }
+
+    const alterEgo = cardState.alterEgos.find((entry) => entry.id === runtime.alterEgoId) ?? cardState.alterEgos[0];
+    const { entries } = buildFieldPromptEntriesForGeneration(alterEgo?.fields || [], runtime, {
         targetScope: TARGET_SCOPE.PERSONA,
-        personaId: normalizedPersonaId,
-        generationId,
         chat,
-        mutate,
+        includeTriggerActions: false,
+        messageIndex: endExclusive ?? getLiveChat().length,
     });
 
-    if (mutate && (changed || alterEgoSwapResult.changed)) {
-        schedulePersonaSave(normalizedPersonaId, state);
+    const name = String(alterEgo?.name || '').trim() || getNativePersonaName(normalizedPersonaId);
+    const prompt = entries.length ? wrapPersonaDynamicFieldsPrompt(normalizedPersonaId, entries.join('\n\n'), name) : '';
 
-        if (alterEgoSwapResult.changed) {
-            refreshActivePersonaAlterEgoVisualIdentity(normalizedPersonaId);
-            stampLatestUserMessageWithActivePersonaAlterEgo(normalizedPersonaId);
-        }
+    return { prompt, runtime: serializeRuntime(runtime), alterEgo };
+}
 
-        setTimeout(() => {
-            renderPersonaPanel();
-            updatePersonaTokenEstimate();
-            updateSettingsActionState();
-        }, 0);
-    }
-
-    if (!entries.length) {
-        return '';
-    }
-
-    return wrapPersonaDynamicFieldsPrompt(
-        normalizedPersonaId,
-        entries.join('\n\n'),
-    );
+function preparePersonaReplacementPromptForGeneration(personaId, generationId, chat, options = {}) {
+    return computePersonaGeneration(personaId, chat, options).prompt;
 }
 
 function buildPersonaReplacementPrompt(personaId = getActivePersonaId()) {
@@ -4674,6 +4833,8 @@ function getChatOverrideForUserMessage(messageId, message) {
     return chatOverride;
 }
 
+// When the user sends a message, evaluate persona alter-ego swaps and Persona
+// field triggers against it, and stamp the resulting state on that message.
 function applyPersonaAlterEgoSwapForUserMessage(messageId, message = getContext()?.chat?.[Number(messageId)]) {
     if (!isUserChatMessage(message)) {
         return false;
@@ -4681,18 +4842,19 @@ function applyPersonaAlterEgoSwapForUserMessage(messageId, message = getContext(
 
     const personaId = getActivePersonaId();
 
-    if (!personaId) {
+    if (!personaId || !readPersonaCardState(personaId).swapEnabled) {
         return false;
     }
 
-    const state = readPersonaState(personaId);
-    const result = applyTriggeredPersonaAlterEgoSwapToState(state, getChatOverrideForUserMessage(messageId, message));
+    const index = Number(messageId);
+    const chatOverride = getChatOverrideForUserMessage(messageId, message).slice(0, Number.isInteger(index) ? index + 1 : undefined);
+    const result = computePersonaGeneration(personaId, chatOverride, { endExclusive: Number.isInteger(index) ? index : undefined });
 
-    if (!result.changed) {
+    if (!result.runtime || !Number.isInteger(index)) {
         return false;
     }
 
-    schedulePersonaSave(personaId, result.state);
+    stampRuntimeOnMessage(index, { personaKey: getPersonaRuntimeKey(personaId), personaRuntime: result.runtime });
     refreshActivePersonaAlterEgoVisualIdentity(personaId);
     setTimeout(() => {
         renderPersonaPanel();
@@ -5220,9 +5382,6 @@ function createFieldFromNativeImport(name, content) {
         enablingKeywordMode: KEYWORD_MODE.ALL,
         disablingKeywordMode: KEYWORD_MODE.ALL,
         triggerActionInstruction: '',
-        triggerActionPhase: TRIGGER_ACTION_PHASE.IDLE,
-        triggerActionGenerationId: 0,
-        triggerActionEnabledByGeneration: false,
         content,
         enabled: true,
     });
@@ -5239,9 +5398,6 @@ function createPersonaFieldFromNativeImport(name, content) {
         enablingKeywordMode: KEYWORD_MODE.ALL,
         disablingKeywordMode: KEYWORD_MODE.ALL,
         triggerActionInstruction: '',
-        triggerActionPhase: TRIGGER_ACTION_PHASE.IDLE,
-        triggerActionGenerationId: 0,
-        triggerActionEnabledByGeneration: false,
         content,
         enabled: true,
     });
@@ -8815,9 +8971,6 @@ function createBlankFieldForTargetScope(targetScope) {
         enablingKeywordMode: KEYWORD_MODE.ALL,
         disablingKeywordMode: KEYWORD_MODE.ALL,
         triggerActionInstruction: '',
-        triggerActionPhase: TRIGGER_ACTION_PHASE.IDLE,
-        triggerActionGenerationId: 0,
-        triggerActionEnabledByGeneration: false,
         content: '',
         enabled: true,
     }, targetScope);
@@ -9574,10 +9727,6 @@ function bindFieldEditHandlers() {
                 }
 
                 field.enabled = Boolean(this.checked);
-
-                if (!field.enabled) {
-                    resetTriggerActionLifecycle(field);
-                }
             }, { rerender: false });
         });
 
@@ -9754,9 +9903,6 @@ function bindFieldActionHandlers() {
                     ...state.fields[index],
                     id: makeId(),
                     name: `${state.fields[index].name || 'Field'} Copy`,
-                    triggerActionPhase: TRIGGER_ACTION_PHASE.IDLE,
-                    triggerActionGenerationId: 0,
-                    triggerActionEnabledByGeneration: false,
                 }, targetScope);
 
                 state.fields.splice(index + 1, 0, copy);
@@ -10505,73 +10651,15 @@ function resolveInterceptorPersonaId(options = {}) {
 }
 
 // -----------------------------------------------------------------------------
-// Generation Flow - Character Trigger Action Finalization
-// -----------------------------------------------------------------------------
-
-function finalizeTriggerActionLifecycle({ cancel = false } = {}) {
-    const characterId = currentGenerationCharacterId;
-    const generationId = currentGenerationId;
-
-    if (characterId === undefined || characterId === null || characterId === '' || !generationId) {
-        return;
-    }
-
-    const state = readState(characterId);
-
-    if (!state.swapEnabled) {
-        return;
-    }
-
-    let changed = false;
-
-    for (const field of state.fields) {
-        const normalized = normalizeCharacterField(field);
-
-        if (
-            normalized.triggerActionPhase !== TRIGGER_ACTION_PHASE.ACTION_INJECTED ||
-            normalized.triggerActionGenerationId !== generationId
-        ) {
-            continue;
-        }
-
-        if (cancel) {
-            if (normalized.triggerActionEnabledByGeneration) {
-                applyMutableFieldState(field, { enabled: false });
-            }
-
-            resetTriggerActionLifecycle(field);
-        } else {
-            applyMutableFieldState(field, {
-                triggerActionPhase: TRIGGER_ACTION_PHASE.CONTENT_READY,
-                triggerActionGenerationId: generationId,
-                triggerActionEnabledByGeneration: false,
-            });
-        }
-
-        changed = true;
-    }
-
-    if (changed) {
-        scheduleSave(characterId, state);
-
-        setTimeout(() => {
-            renderPanel();
-            updateTokenEstimate();
-            updateSettingsActionState();
-        }, 0);
-    }
-}
-
-// -----------------------------------------------------------------------------
 // Generation Flow - Completion Cleanup
 // -----------------------------------------------------------------------------
 
-function finishGenerationLifecycle({ cancel = false } = {}) {
+// State computed by the interceptor, waiting to be stamped on the reply.
+let pendingRuntimeStamp = null;
+
+function finishGenerationLifecycle() {
     const characterId = currentGenerationCharacterId;
     const personaId = currentGenerationPersonaId;
-
-    finalizeTriggerActionLifecycle({ cancel });
-    restoreSuppressedDescriptions();
 
     if (characterId !== undefined && characterId !== null && characterId !== '') {
         clearPreparedPrompt(characterId);
@@ -10590,8 +10678,7 @@ function finishGenerationLifecycle({ cancel = false } = {}) {
 
 // SillyTavern calls interceptors as (chat, contextSize, abort, type).
 // Background ('quiet') runs and Impersonate must never advance Evolutia state:
-// they are not the character's reply. Impersonate must also never receive
-// character Trigger Actions, because the model is writing the user's turn.
+// they are not the character's reply. They also never receive Trigger Actions.
 function getInterceptorGenerationType(args = []) {
     const type = args.find((entry) => typeof entry === 'string');
     return type ? String(type).trim().toLowerCase() : 'normal';
@@ -10601,15 +10688,28 @@ function isReadOnlyGenerationType(type) {
     return type === 'quiet' || type === 'impersonate';
 }
 
+// Index of the chat message this generation writes. Swipe and Continue rewrite
+// the last message, so the state before it is the starting point.
+function getGenerationTargetIndex(type) {
+    const chat = getLiveChat();
+    return type === 'swipe' || type === 'continue' ? Math.max(0, chat.length - 1) : chat.length;
+}
+
 async function aspectEvolutiaGenerateInterceptor(...args) {
     const chat = getInterceptorChatFromArgs(args);
     const options = getInterceptorOptionsFromArgs(args);
     const generationType = getInterceptorGenerationType(args);
     const readOnly = isReadOnlyGenerationType(generationType);
     const includeTriggerActions = !readOnly;
+    const targetIndex = getGenerationTargetIndex(generationType);
+    const scanChat = Array.isArray(chat) ? chat : [];
 
     const characterId = resolveInterceptorCharacterId(options);
     const personaId = resolveInterceptorPersonaId(options);
+
+    if (!readOnly) {
+        pendingRuntimeStamp = null;
+    }
 
     if (
         (characterId === undefined || characterId === null || characterId === '') &&
@@ -10621,48 +10721,73 @@ async function aspectEvolutiaGenerateInterceptor(...args) {
     }
 
     const generationId = beginGenerationLifecycle(characterId, personaId);
+    const stamp = { targetIndex, type: generationType };
 
     if (characterId !== undefined && characterId !== null && characterId !== '') {
-        const characterState = readState(characterId);
+        const result = computeCharacterGeneration(characterId, scanChat, {
+            includeTriggerActions,
+            endExclusive: targetIndex,
+        });
 
-        if (characterState.swapEnabled) {
-            const characterPrompt = prepareReplacementPromptForGeneration(
-                characterId,
-                generationId,
-                Array.isArray(chat) ? chat : [],
-                {
-                    mutate: !readOnly,
-                    includeTriggerActions,
-                },
-            );
-
-            setPreparedPrompt(characterId, generationId, characterPrompt);
+        if (result.runtime) {
+            setPreparedPrompt(characterId, generationId, result.prompt);
+            stamp.characterKey = getCharacterRuntimeKey(characterId);
+            stamp.characterRuntime = result.runtime;
+            applyCharacterNameForGeneration(characterId, result.alterEgo);
         } else {
             clearPreparedPrompt(characterId);
         }
     }
 
     if (personaId) {
-        const personaState = readPersonaState(personaId);
+        const personaCard = readPersonaCardState(personaId);
 
-        if (personaState.swapEnabled && isPersonaDescriptionInPromptManagerPosition(personaId)) {
-            const personaPrompt = preparePersonaReplacementPromptForGeneration(
-                personaId,
-                generationId,
-                Array.isArray(chat) ? chat : [],
-                {
-                    mutate: !readOnly,
-                },
-            );
-
-            setPreparedPersonaPrompt(personaId, generationId, personaPrompt);
+        if (personaCard.swapEnabled && isPersonaDescriptionInPromptManagerPosition(personaId)) {
+            const result = computePersonaGeneration(personaId, scanChat, { endExclusive: targetIndex });
+            setPreparedPersonaPrompt(personaId, generationId, result.prompt);
+            stamp.personaKey = getPersonaRuntimeKey(personaId);
+            stamp.personaRuntime = result.runtime;
         } else {
             clearPreparedPersonaPrompt(personaId);
         }
     }
+
+    if (!readOnly && (stamp.characterRuntime || stamp.personaRuntime)) {
+        pendingRuntimeStamp = stamp;
+    }
 }
 
 globalThis[ASPECT_INTERCEPTOR_NAME] = aspectEvolutiaGenerateInterceptor;
+
+function applyCharacterNameForGeneration(characterId, alterEgo) {
+    const cardState = readCardState(characterId);
+
+    if (!cardState.swapEnabled || !alterEgo) {
+        return;
+    }
+
+    const name = String(alterEgo.name || '').trim() || getNativeCharacterName(characterId);
+
+    if (typeof importedSetCharacterName === 'function') {
+        importedSetCharacterName(name);
+    }
+}
+
+// Called when a reply lands (MESSAGE_RECEIVED). Stamps the state the reply was
+// written with onto that message (and its current swipe).
+function stampPendingRuntimeOnMessage(messageId) {
+    const stamp = pendingRuntimeStamp;
+    const index = Number(messageId);
+    const message = getLiveChat()[index];
+
+    if (!stamp || !message || message.is_user || index !== stamp.targetIndex) {
+        return false;
+    }
+
+    pendingRuntimeStamp = null;
+    stampRuntimeOnMessage(index, stamp);
+    return true;
+}
 
 // -----------------------------------------------------------------------------
 // Generation Flow - Prompt Build Cleanup
@@ -10677,11 +10802,61 @@ function onGenerationPromptBuilt() {
 // -----------------------------------------------------------------------------
 
 function onGenerationFinished() {
-    finishGenerationLifecycle({ cancel: false });
+    finishGenerationLifecycle();
+    setTimeout(() => {
+        refreshCharacterRuntimeUi();
+    }, 0);
 }
 
 function onGenerationStopped() {
-    finishGenerationLifecycle({ cancel: true });
+    finishGenerationLifecycle();
+}
+
+let lastRuntimeUiSignature = '';
+
+function getRuntimeUiSignature() {
+    const parts = [];
+    const characterId = getActiveCharacterId();
+    const personaId = getActivePersonaId();
+
+    if (characterId !== undefined) {
+        const runtime = readState(characterId).__view?.runtime;
+        parts.push(JSON.stringify([runtime?.alterEgoId, runtime?.fields]));
+    }
+
+    if (personaId) {
+        const runtime = readPersonaState(personaId).__view?.runtime;
+        parts.push(JSON.stringify([runtime?.alterEgoId, runtime?.fields]));
+    }
+
+    return `${characterId}|${personaId}|${parts.join('|')}`;
+}
+
+// Re-renders only when the chat state shown in the editor changed, so open
+// field menus are not closed by every generation.
+function refreshCharacterRuntimeUi() {
+    invalidateRuntimeCache();
+    applyActiveAlterEgoNameToSillyTavern();
+    refreshActiveAlterEgoVisualIdentity();
+    refreshActivePersonaAlterEgoVisualIdentity();
+
+    const signature = getRuntimeUiSignature();
+
+    if (signature === lastRuntimeUiSignature) {
+        return;
+    }
+
+    lastRuntimeUiSignature = signature;
+
+    if ($(`#${UI.PANEL_ID}`).length) {
+        renderPanel();
+    }
+
+    if (isPersonaUiMounted()) {
+        renderPersonaPanel();
+    }
+
+    updateSettingsActionState();
 }
 
 // ============================================================================
@@ -10933,6 +11108,8 @@ function registerEvents() {
     registerEventHandler(eventSource, eventTypes, 'APP_READY', onAppReady);
 
     registerEventHandler(eventSource, eventTypes, 'CHAT_CHANGED', () => {
+        pendingRuntimeStamp = null;
+        invalidateRuntimeCache();
         refreshAllUiAfterStateChange();
     });
 
@@ -10978,11 +11155,20 @@ function registerEvents() {
         const resolvedMessageId = Number.isFinite(Number(messageId)) ? Number(messageId) : ((ctx?.chat?.length ?? 1) - 1);
         const message = ctx?.chat?.[resolvedMessageId];
 
+        stampPendingRuntimeOnMessage(resolvedMessageId);
+
         if (isAssistantMessageForCharacter(message)) {
             stampMessageWithActiveAlterEgoIdentity(resolvedMessageId, message);
         }
 
         runAfterSettingsSettle(refreshTokenEstimatesAfterContextChange, 50);
+    });
+
+    ['MESSAGE_DELETED', 'MESSAGE_SWIPED', 'MESSAGE_EDITED', 'MESSAGE_UPDATED'].forEach((eventName) => {
+        registerEventHandler(eventSource, eventTypes, eventName, () => {
+            invalidateRuntimeCache();
+            runAfterSettingsSettle(refreshCharacterRuntimeUi, 50);
+        });
     });
 
     registerEventHandler(eventSource, eventTypes, 'USER_MESSAGE_RENDERED', (messageId) => {
