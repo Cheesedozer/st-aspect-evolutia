@@ -4306,12 +4306,62 @@ function buildAspectEvolutiaPersonaMacroValue() {
 // Prompt Manager Integration - Macro Registration
 // -----------------------------------------------------------------------------
 
-function safelyRegisterMacro(name, handler, description) {
+// SillyTavern has two macro engines. The new one (getContext().macros) is
+// used when "experimental macro engine" is on; the legacy one still needs the
+// deprecated MacrosParser, so that registration is done only while the legacy
+// engine is active (it logs a deprecation warning by design).
+const legacyRegisteredMacros = new Set();
+const registeredMacroHandlers = new Map();
+
+function isLegacyMacroEngineActive() {
+    return !getPowerUserSettings()?.experimental_macro_engine;
+}
+
+function registerMacroInLegacyEngine(name, handler, description) {
+    if (legacyRegisteredMacros.has(name)) {
+        return;
+    }
+
     try {
         MacrosParser.registerMacro(name, handler, description);
+        legacyRegisteredMacros.add(name);
     } catch (error) {
-        console.error(`[${MODULE_NAME}] Failed to register macro "${name}":`, error);
-        notify('error', `Failed to register Aspect: Evolutia macro "${name}".`);
+        console.error(`[${MODULE_NAME}] Failed to register legacy macro "${name}":`, error);
+    }
+}
+
+function safelyRegisterMacro(name, handler, description) {
+    registeredMacroHandlers.set(name, { handler, description });
+    const modern = getContext()?.macros;
+    let registeredModern = false;
+
+    if (typeof modern?.register === 'function') {
+        try {
+            registeredModern = Boolean(modern.register(name, {
+                category: modern.category?.CHARACTER ?? 'character',
+                description,
+                handler: () => String(handler() ?? ''),
+            }));
+        } catch (error) {
+            console.warn(`[${MODULE_NAME}] New macro engine registration failed for "${name}":`, error);
+        }
+    }
+
+    // Settings are not loaded yet at boot; the legacy registration for users of
+    // the legacy engine happens in ensureLegacyMacrosIfNeeded() on APP_READY.
+    if (!registeredModern) {
+        registerMacroInLegacyEngine(name, handler, description);
+    }
+}
+
+// If the user switches back to the legacy engine later, register there too.
+function ensureLegacyMacrosIfNeeded() {
+    if (!isLegacyMacroEngineActive()) {
+        return;
+    }
+
+    for (const [name, { handler, description }] of registeredMacroHandlers) {
+        registerMacroInLegacyEngine(name, handler, description);
     }
 }
 
@@ -11903,6 +11953,7 @@ function refreshTokenEstimatesAfterContextChange() {
 }
 
 function refreshAfterGenericSettingsUpdate() {
+    ensureLegacyMacrosIfNeeded();
     // SETTINGS_UPDATED also fires after our own debounced saves and Prompt Manager
     // syncs. Do not mount or render panels here; doing so destroys open popout DOM.
     updateSettingsActionState();
@@ -11952,6 +12003,7 @@ function registerEvents() {
     ensurePersonaDomObserver();
 
     const onAppReady = () => {
+        ensureLegacyMacrosIfNeeded();
         mountExtensionSettings();
         mountUi();
         mountPersonaUiIfMissing();
@@ -11963,6 +12015,7 @@ function registerEvents() {
     };
 
     registerEventHandler(eventSource, eventTypes, 'APP_INITIALIZED', () => {
+        ensureLegacyMacrosIfNeeded();
         mountExtensionSettings();
         mountUi();
         mountPersonaUiIfMissing();
