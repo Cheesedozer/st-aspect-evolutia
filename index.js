@@ -76,8 +76,9 @@ const LEGACY_TRIGGER_SOURCE_ALIASES = Object.freeze({
 });
 
 const TRIGGER_SOURCE_LABELS = Object.freeze({
-    [TRIGGER_SOURCE.QUIET_PROMPTS]: 'Quiet Prompts',
-    [TRIGGER_SOURCE.SYSTEM_PROMPTS]: 'System Prompts',
+    // Stored ids are kept for compatibility; the labels describe what is read.
+    [TRIGGER_SOURCE.QUIET_PROMPTS]: 'Extension Injections',
+    [TRIGGER_SOURCE.SYSTEM_PROMPTS]: 'Last Narrator Message (/sys)',
     [TRIGGER_SOURCE.LAST_ASSISTANT_MESSAGE]: 'Last Assistant Message',
     [TRIGGER_SOURCE.LAST_USER_MESSAGE]: 'Last User Message',
     [TRIGGER_SOURCE.WORLD_INFO_LOREBOOKS]: 'World Info / Lorebooks',
@@ -2786,6 +2787,7 @@ function clearRuntimeCachesForCharacterAndPersona() {
 const CARD_SCHEMA_VERSION = 2;
 const RUNTIME_EXTRA_KEY = 'runtime';
 const RUNTIME_METADATA_KEY = 'aspectEvolutia';
+const EVOLUTIA_EXTENSION_PROMPT_PREFIX = 'aspectEvolutia';
 const legacyBackupsDone = new Set();
 const runtimeNowCache = new Map();
 
@@ -3363,86 +3365,55 @@ function getLastAssistantMessageText(chatOverride) {
     return getLatestMatchingChatMessageText(isAssistantChatMessage, chatOverride);
 }
 
-function getSystemChatMessagesText(chatOverride) {
-    return getChatSource(chatOverride)
-        .filter(isSystemChatMessage)
-        .map(getChatMessageText)
-        .filter(Boolean)
-        .join('\n');
-}
-
 // -----------------------------------------------------------------------------
 // Trigger Source Text Collection - Prompt and World Info Source Readers
 // -----------------------------------------------------------------------------
 
+// "Extension Injections": text other extensions inject via setExtensionPrompt
+// (Author's Note, Summarize, Vector memories, SillyBunny agents, ...).
+// Stored id: quiet_prompts (kept for compatibility).
 function getQuietPromptText() {
-    const ctx = getContext();
+    const prompts = getContext()?.extensionPrompts;
 
-    const candidates = [
-        ctx?.extensionPrompts,
-        ctx?.quietPrompts,
-        ctx?.quiet_prompts,
-        ctx?.promptBias,
-        ctx?.prompt_bias,
-    ];
+    if (!prompts || typeof prompts !== 'object') {
+        return '';
+    }
 
-    return candidates
-        .map((candidate) => stringifyTriggerSourceValue(candidate))
-        .filter(Boolean)
+    return Object.entries(prompts)
+        .filter(([key]) => !String(key).startsWith(EVOLUTIA_EXTENSION_PROMPT_PREFIX))
+        .map(([, prompt]) => (typeof prompt?.value === 'string' ? prompt.value : ''))
+        .filter((value) => value.trim())
         .join('\n');
 }
 
+function isNarratorChatMessage(message) {
+    return Boolean(message && typeof message === 'object' && !message.is_user && message.extra?.type === 'narrator');
+}
+
+// "Last Narrator Message (/sys)": the newest narrator message in the chat.
+// Stored id: system_prompts (kept for compatibility).
 function getSystemPromptText(chatOverride) {
-    const manager = getPromptManagerInstance?.();
-    const promptOrder = getPromptOrder?.(manager) || [];
+    return getLatestMatchingChatMessageText(isNarratorChatMessage, chatOverride);
+}
 
-    const promptManagerText = promptOrder
-        .filter((entry) => entry?.enabled !== false)
-        .map((entry) => {
-            const prompt = manager?.getPromptById?.(entry.identifier);
-            const role = String(prompt?.role || '').toLowerCase();
+// Activated World Info entries of the current generation, captured from
+// WORLD_INFO_ACTIVATED (title, keys and content of each entry).
+let activatedWorldInfoText = '';
 
-            if (role !== 'system') {
-                return '';
-            }
-
-            return stringifyTriggerSourceValue(prompt?.content);
-        })
+function setActivatedWorldInfoEntries(entries) {
+    activatedWorldInfoText = (Array.isArray(entries) ? entries : [])
+        .map((entry) => [
+            entry?.comment,
+            Array.isArray(entry?.key) ? entry.key.join(', ') : '',
+            Array.isArray(entry?.keysecondary) ? entry.keysecondary.join(', ') : '',
+            entry?.content,
+        ].filter((value) => typeof value === 'string' && value.trim()).join('\n'))
         .filter(Boolean)
-        .join('\n');
-
-    return [
-        getSystemChatMessagesText(chatOverride),
-        promptManagerText,
-    ]
-        .filter(Boolean)
-        .join('\n');
+        .join('\n\n');
 }
 
 function getWorldInfoLorebookText() {
-    const ctx = getContext();
-
-    const candidates = [
-        ctx?.worldInfo,
-        ctx?.world_info,
-        ctx?.worldInfoCache,
-        ctx?.world_info_cache,
-        ctx?.activatedWorldInfo,
-        ctx?.activated_world_info,
-        ctx?.wiEntries,
-        ctx?.wi_entries,
-        ctx?.lorebooks,
-        ctx?.loreBooks,
-        ctx?.activatedLorebooks,
-        ctx?.activated_lorebooks,
-        ctx?.lorebookEntries,
-        ctx?.lorebook_entries,
-    ];
-
-    return candidates
-        .map((candidate) => stringifyTriggerSourceValue(candidate))
-        .filter(Boolean)
-        .join('\n');
+    return activatedWorldInfoText;
 }
 
 // -----------------------------------------------------------------------------
@@ -3854,6 +3825,7 @@ function buildAspectEvolutiaMacroValue() {
 }
 
 function buildAspectEvolutiaCharacterMacroValue() {
+    finalizeActiveGenerationOnce();
     const characterId = getMacroCharacterId();
     const character = getCharacter(characterId);
 
@@ -3918,6 +3890,7 @@ function buildPersonaReplacementPrompt(personaId = getActivePersonaId()) {
 }
 
 function buildAspectEvolutiaPersonaMacroValue() {
+    finalizeActiveGenerationOnce();
     const personaId = getMacroPersonaId();
 
     if (!personaId) {
@@ -10731,6 +10704,7 @@ function resolveInterceptorPersonaId(options = {}) {
 let pendingRuntimeStamp = null;
 
 function finishGenerationLifecycle() {
+    activeGenerationContext = null;
     const characterId = currentGenerationCharacterId;
     const personaId = currentGenerationPersonaId;
 
@@ -10794,6 +10768,34 @@ async function aspectEvolutiaGenerateInterceptor(...args) {
     }
 
     const generationId = beginGenerationLifecycle(characterId, personaId);
+    const context = { characterId, personaId, generationId, scanChat, includeTriggerActions, readOnly, targetIndex, generationType };
+
+    // A read-only run nested inside a real reply (SillyBunny auxiliary runs)
+    // must not replace the reply's context or its World Info text.
+    if (readOnly && activeGenerationContext && !activeGenerationContext.readOnly) {
+        computeActiveGeneration(context);
+        return;
+    }
+
+    activatedWorldInfoText = '';
+    activeGenerationContext = context;
+    computeActiveGeneration();
+}
+
+globalThis[ASPECT_INTERCEPTOR_NAME] = aspectEvolutiaGenerateInterceptor;
+
+// Inputs of the generation in progress, kept so it can be re-evaluated once
+// World Info has activated (SillyTavern scans World Info after interceptors,
+// but before the Evolutia macros are read).
+let activeGenerationContext = null;
+
+function computeActiveGeneration(context = activeGenerationContext) {
+
+    if (!context) {
+        return;
+    }
+
+    const { characterId, personaId, generationId, scanChat, includeTriggerActions, readOnly, targetIndex, generationType } = context;
     const stamp = { targetIndex, type: generationType };
 
     if (characterId !== undefined && characterId !== null && characterId !== '') {
@@ -10830,7 +10832,23 @@ async function aspectEvolutiaGenerateInterceptor(...args) {
     }
 }
 
-globalThis[ASPECT_INTERCEPTOR_NAME] = aspectEvolutiaGenerateInterceptor;
+function onWorldInfoActivated(entries) {
+    setActivatedWorldInfoEntries(entries);
+}
+
+// Called from the macros: the first read in a generation re-evaluates with the
+// sources that only exist by then (activated World Info, Author's Note and
+// other injections set after interceptors ran).
+function finalizeActiveGenerationOnce() {
+    const context = activeGenerationContext;
+
+    if (!context || context.finalized) {
+        return;
+    }
+
+    context.finalized = true;
+    computeActiveGeneration(context);
+}
 
 function applyCharacterNameForGeneration(characterId, alterEgo) {
     const cardState = readCardState(characterId);
@@ -11287,6 +11305,7 @@ function registerEvents() {
     registerEventHandler(eventSource, eventTypes, 'GENERATE_AFTER_DATA', onGenerationPromptBuilt);
     registerEventHandler(eventSource, eventTypes, 'GENERATE_AFTER_COMBINE_PROMPTS', onGenerationPromptBuilt);
 
+    registerEventHandler(eventSource, eventTypes, 'WORLD_INFO_ACTIVATED', onWorldInfoActivated);
     registerEventHandler(eventSource, eventTypes, 'GENERATION_ENDED', onGenerationFinished);
     registerEventHandler(eventSource, eventTypes, 'GENERATION_STOPPED', onGenerationStopped);
 
