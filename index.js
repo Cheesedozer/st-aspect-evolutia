@@ -10808,7 +10808,12 @@ function onGenerationFinished() {
     }, 0);
 }
 
+// Stop cancels: the state computed for the interrupted reply is discarded, so
+// a Trigger Action that was cut off is performed again by the next reply.
+// This no longer depends on the order of GENERATION_ENDED / GENERATION_STOPPED
+// (SillyTavern emits ENDED first when Stop is clicked).
 function onGenerationStopped() {
+    pendingRuntimeStamp = null;
     finishGenerationLifecycle();
 }
 
