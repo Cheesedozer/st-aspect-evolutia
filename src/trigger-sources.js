@@ -171,10 +171,14 @@ export function getChatSource(chatOverride) {
     return Array.isArray(ctx?.chat) ? ctx.chat : [];
 }
 
-export function getLatestMatchingChatMessageText(predicate, chatOverride) {
+// Returns the text of the newest `depth` messages matching `predicate`
+// (newest first), joined by newlines.
+export function getLatestMatchingChatMessageText(predicate, chatOverride, depth = 1) {
     const chat = getChatSource(chatOverride);
+    const texts = [];
+    const limit = Math.max(1, Number(depth) || 1);
 
-    for (let index = chat.length - 1; index >= 0; index -= 1) {
+    for (let index = chat.length - 1; index >= 0 && texts.length < limit; index -= 1) {
         const message = chat[index];
 
         if (!predicate(message)) {
@@ -184,19 +188,19 @@ export function getLatestMatchingChatMessageText(predicate, chatOverride) {
         const text = getChatMessageText(message);
 
         if (text) {
-            return text;
+            texts.push(text);
         }
     }
 
-    return '';
+    return texts.join('\n');
 }
 
-export function getLastUserMessageText(chatOverride) {
-    return getLatestMatchingChatMessageText(isUserChatMessage, chatOverride);
+export function getLastUserMessageText(chatOverride, depth = 1) {
+    return getLatestMatchingChatMessageText(isUserChatMessage, chatOverride, depth);
 }
 
-export function getLastAssistantMessageText(chatOverride) {
-    return getLatestMatchingChatMessageText(isAssistantChatMessage, chatOverride);
+export function getLastAssistantMessageText(chatOverride, depth = 1) {
+    return getLatestMatchingChatMessageText(isAssistantChatMessage, chatOverride, depth);
 }
 
 // -----------------------------------------------------------------------------
@@ -226,8 +230,8 @@ export function isNarratorChatMessage(message) {
 
 // "Last Narrator Message (/sys)": the newest narrator message in the chat.
 // Stored id: system_prompts (kept for compatibility).
-export function getSystemPromptText(chatOverride) {
-    return getLatestMatchingChatMessageText(isNarratorChatMessage, chatOverride);
+export function getSystemPromptText(chatOverride, depth = 1) {
+    return getLatestMatchingChatMessageText(isNarratorChatMessage, chatOverride, depth);
 }
 
 // Activated World Info entries of the current generation, captured from
@@ -254,21 +258,21 @@ export function getWorldInfoLorebookText() {
 // Trigger Source Text Collection - Source Dispatcher
 // -----------------------------------------------------------------------------
 
-export function getTriggerSourceText(source, chatOverride) {
+export function getTriggerSourceText(source, chatOverride, depth = 1) {
     if (source === TRIGGER_SOURCE.QUIET_PROMPTS) {
         return getQuietPromptText();
     }
 
     if (source === TRIGGER_SOURCE.SYSTEM_PROMPTS) {
-        return getSystemPromptText(chatOverride);
+        return getSystemPromptText(chatOverride, depth);
     }
 
     if (source === TRIGGER_SOURCE.LAST_ASSISTANT_MESSAGE) {
-        return getLastAssistantMessageText(chatOverride);
+        return getLastAssistantMessageText(chatOverride, depth);
     }
 
     if (source === TRIGGER_SOURCE.LAST_USER_MESSAGE) {
-        return getLastUserMessageText(chatOverride);
+        return getLastUserMessageText(chatOverride, depth);
     }
 
     if (source === TRIGGER_SOURCE.WORLD_INFO_LOREBOOKS) {
@@ -278,13 +282,14 @@ export function getTriggerSourceText(source, chatOverride) {
     return '';
 }
 
-export function buildScanText(triggerSources = DEFAULT_TRIGGER_SOURCES, chatOverride = undefined) {
+// `depth`: how many recent messages chat-based sources scan (1 = only the latest).
+export function buildScanText(triggerSources = DEFAULT_TRIGGER_SOURCES, chatOverride = undefined, depth = 1) {
     const sources = normalizeTriggerSources(triggerSources);
 
     // Original case is kept so /regex/ keywords can match case-sensitively;
     // plain keywords are compared case-insensitively in keywordMatches().
     return sources
-        .map((source) => getTriggerSourceText(source, chatOverride))
+        .map((source) => getTriggerSourceText(source, chatOverride, depth))
         .filter(Boolean)
         .join('\n');
 }

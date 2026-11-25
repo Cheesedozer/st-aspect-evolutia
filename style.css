@@ -752,7 +752,8 @@
 #dsf_panel .dsf-inject-row,
 #dsf_persona_panel .dsf-inject-row {
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-start;
     justify-content: flex-start;
 }
 
@@ -954,4 +955,35 @@
     width: 1px;
     height: 1px;
     opacity: 0;
+}
+
+/* Per-field chat state ("In this chat: On — Enabled by ...") */
+.dsf-field-status {
+    font-size: 0.85em;
+    opacity: 0.85;
+    margin-top: 4px;
+    line-height: 1.35;
+}
+
+.dsf-field-status-off b {
+    opacity: 0.75;
+}
+
+.dsf-scan-row {
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.dsf-scan-row input[type="number"] {
+    width: 4.5em;
+    min-width: 0;
+    margin: 0 4px;
+}
+
+.dsf-settings-note {
+    font-size: 0.9em;
+    margin: 4px 0 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }

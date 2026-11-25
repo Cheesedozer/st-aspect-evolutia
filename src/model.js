@@ -142,6 +142,12 @@ export function createEmptyPersonaFieldsState(personaId = getActivePersonaId()) 
     return normalizePersonaState(state, { personaId });
 }
 
+// Integer setting clamped to [min, max]; `fallback` when missing or invalid.
+export function normalizeCount(value, fallback, min, max) {
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.min(max, Math.max(min, Math.round(number))) : fallback;
+}
+
 export function normalizeKeywordMatching(rawMatching) {
     return rawMatching === KEYWORD_MATCHING.WORDS ? KEYWORD_MATCHING.WORDS : KEYWORD_MATCHING.SUBSTRING;
 }
@@ -197,6 +203,8 @@ export function normalizeField(field = {}, options = {}) {
         enablingKeywordMode: normalizeKeywordMode(field.enablingKeywordMode ?? legacyKeywordMode),
         disablingKeywordMode: normalizeKeywordMode(field.disablingKeywordMode ?? legacyKeywordMode),
         keywordMatching: normalizeKeywordMatching(field.keywordMatching),
+        scanDepth: normalizeCount(field.scanDepth, 1, 1, 20),
+        stickyTurns: normalizeCount(field.stickyTurns, 0, 0, 50),
         triggerActionInstruction: includeTriggerActions ? String(field.triggerActionInstruction ?? '') : '',
         content: String(field.content ?? ''),
     };
@@ -678,6 +686,8 @@ export function exportFieldForJson(field, index = 0, options = {}) {
         enablingKeywordMode: normalized.enablingKeywordMode,
         disablingKeywordMode: normalized.disablingKeywordMode,
         keywordMatching: normalized.keywordMatching,
+        scanDepth: normalized.scanDepth,
+        stickyTurns: normalized.stickyTurns,
         activatingTriggers: splitKeywords(normalized.activatingTriggers),
         enablingTriggers: splitKeywords(normalized.enablingTriggers),
         disablingTriggers: splitKeywords(normalized.disablingTriggers),
@@ -731,6 +741,8 @@ export function importFieldFromJson(field = {}, options = {}) {
         enablingKeywordMode: normalizeKeywordMode(field.enablingKeywordMode ?? field.keywordMode),
         disablingKeywordMode: normalizeKeywordMode(field.disablingKeywordMode ?? field.keywordMode),
         keywordMatching: field.keywordMatching,
+        scanDepth: field.scanDepth,
+        stickyTurns: field.stickyTurns,
         triggerActionInstruction: includeTriggerActions ? joinLinesFromJson(field.triggerActionInstruction) : '',
         content: joinLinesFromJson(field.content),
     }, {

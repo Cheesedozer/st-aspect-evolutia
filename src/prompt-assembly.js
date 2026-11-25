@@ -301,7 +301,7 @@ export function buildFieldPromptEntriesForGeneration(fields, runtime, {
 
     for (const field of fields || []) {
         const normalized = normalizeForTarget(field);
-        const scanText = buildScanText(normalized.triggerSources, chat);
+        const scanText = buildScanText(normalized.triggerSources, chat, normalized.scanDepth);
         const content = normalized.content.trim();
         const configuredTriggerAction = isPersona ? '' : normalized.triggerActionInstruction.trim();
         const triggerActionInstruction = includeTriggerActions ? configuredTriggerAction : '';
@@ -328,7 +328,20 @@ export function buildFieldPromptEntriesForGeneration(fields, runtime, {
             ? findMatchingTrigger(normalized.enablingTriggers, scanText, normalized.enablingKeywordMode, normalized.keywordMatching)
             : '';
         const activatingMatch = findMatchingTrigger(normalized.activatingTriggers, scanText, normalized.activatingKeywordMode, normalized.keywordMatching);
-        const activationSatisfied = !splitKeywords(normalized.activatingTriggers).length || Boolean(activatingMatch);
+        const hasActivatingTriggers = splitKeywords(normalized.activatingTriggers).length > 0;
+        // "Stay active for N replies": after an Activating match, Content keeps
+        // injecting for N more replies even if the keyword is not repeated.
+        const stickyRemaining = Number(state.stickyRemaining) || 0;
+        const stickyActive = hasActivatingTriggers && !activatingMatch && stickyRemaining > 0;
+        const activationSatisfied = !hasActivatingTriggers || Boolean(activatingMatch) || stickyActive;
+
+        if (activatingMatch && normalized.stickyTurns > 0 && stickyRemaining !== normalized.stickyTurns) {
+            state.stickyRemaining = normalized.stickyTurns;
+            changed = true;
+        } else if (stickyActive && state.enabled) {
+            state.stickyRemaining = stickyRemaining - 1;
+            changed = true;
+        }
         const occurrenceKey = getTriggerOccurrenceKey(scanText);
 
         if (enablingMatch) {
@@ -475,6 +488,7 @@ export function computeCharacterGeneration(characterId, chat, { includeTriggerAc
 
     if (triggered && triggered.id !== runtime.alterEgoId) {
         runtime.alterEgoId = triggered.id;
+        runtime.alterEgoReason = `Swapped by "${splitKeywords(triggered.changeConditions).join(', ')}"`;
     }
 
     const alterEgo = cardState.alterEgos.find((entry) => entry.id === runtime.alterEgoId) ?? cardState.alterEgos[0];
@@ -607,6 +621,7 @@ export function computePersonaGeneration(personaId, chat, { endExclusive = undef
 
     if (triggered && triggered.id !== runtime.alterEgoId) {
         runtime.alterEgoId = triggered.id;
+        runtime.alterEgoReason = `Swapped by "${splitKeywords(triggered.changeConditions).join(', ')}"`;
     }
 
     const alterEgo = cardState.alterEgos.find((entry) => entry.id === runtime.alterEgoId) ?? cardState.alterEgos[0];

@@ -162,14 +162,18 @@ export function resolveRuntime(scope, key, cardState, { chat = getLiveChat(), en
     let alterEgoId = alterEgoIds.has(cardState.activeAlterEgoId) ? cardState.activeAlterEgoId : (cardState.alterEgos?.[0]?.id ?? ALTER_EGO_BASE_ID);
     let alterEgoSource = 'default';
 
+    let alterEgoReason = '';
+
     if (found && alterEgoIds.has(found.snapshot.alterEgoId)) {
         alterEgoId = found.snapshot.alterEgoId;
         alterEgoSource = 'chat';
+        alterEgoReason = String(found.snapshot.alterEgoReason || '');
     }
 
     if (overrideApplies && alterEgoIds.has(override.alterEgoId)) {
         alterEgoId = override.alterEgoId;
         alterEgoSource = 'manual';
+        alterEgoReason = 'Set by hand in this chat';
     }
 
     const fields = {};
@@ -194,6 +198,7 @@ export function resolveRuntime(scope, key, cardState, { chat = getLiveChat(), en
             fields[field.id] = {
                 enabled,
                 actionKey: String(saved?.actionKey || ''),
+                stickyRemaining: Number(saved?.stickyRemaining) || 0,
                 reason: source === 'manual' ? 'Set by hand in this chat' : String(saved?.reason || ''),
                 reasonMessage: source === 'chat' && Number.isInteger(saved?.reasonMessage) ? saved.reasonMessage : null,
                 source,
@@ -204,6 +209,7 @@ export function resolveRuntime(scope, key, cardState, { chat = getLiveChat(), en
     return {
         alterEgoId,
         alterEgoSource,
+        alterEgoReason,
         fields,
         baseIndex: found ? found.index : -1,
     };
@@ -216,6 +222,7 @@ export function serializeRuntime(runtime) {
         fields[fieldId] = {
             enabled: Boolean(value.enabled),
             ...(value.actionKey ? { actionKey: value.actionKey } : {}),
+            ...(Number(value.stickyRemaining) > 0 ? { stickyRemaining: Number(value.stickyRemaining) } : {}),
             ...(value.reason && value.source !== 'manual' ? { reason: value.reason } : {}),
             ...(value.source === 'manual' ? { reason: 'Set by hand in this chat' } : {}),
             ...(Number.isInteger(value.reasonMessage) ? { reasonMessage: value.reasonMessage } : {}),
@@ -225,6 +232,7 @@ export function serializeRuntime(runtime) {
     return {
         v: 1,
         alterEgoId: runtime?.alterEgoId,
+        ...(runtime?.alterEgoReason ? { alterEgoReason: runtime.alterEgoReason } : {}),
         fields,
     };
 }

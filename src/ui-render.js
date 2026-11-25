@@ -1,5 +1,7 @@
 // Aspect: Evolutia — ui-render.js (split from the former single index.js).
 import { getAlterEgoScope } from './alter-ego-scope.js';
+import { isChatOpenForRuntime } from './chat-runtime.js';
+import { splitKeywords } from './prompt-assembly.js';
 import {
     ALTER_EGO_AVATAR_MODE,
     ALTER_EGO_AVATAR_MODE_LABELS,
@@ -1135,6 +1137,7 @@ export function renderPersonaAlterEgoAvatarKeyOptions(selectedAvatarKey) {
 
 export function renderAlterEgoControlsHtml(state, targetScope = TARGET_SCOPE.CHARACTER) {
     const scope = getAlterEgoScope(targetScope);
+    const viewRuntime = state?.swapEnabled && isChatOpenForRuntime() ? state.__view?.runtime : null;
     const normalized = scope.normalizeState(state);
     const activeAlterEgo = getActiveAlterEgo(normalized) || scope.createBase();
     const identity = scope.getIdentity();
@@ -1257,6 +1260,7 @@ export function renderAlterEgoControlsHtml(state, targetScope = TARGET_SCOPE.CHA
                             ${alterEgoOptions}
                         </select>
                     </label>
+                    ${viewRuntime && viewRuntime.alterEgoSource !== 'default' ? `<div class="dsf-field-status" title="The alter ego this chat is currently in, and what switched to it.">In this chat: <b>${escapeTextarea(activeAlterEgo.name)}</b>${viewRuntime.alterEgoReason ? ` — ${escapeTextarea(viewRuntime.alterEgoReason)}` : ''}</div>` : ''}
 
                     <div class="dsf-alter-ego-actions">
                         <button id="${scope.id('CREATE_ID')}" type="button" class="menu_button">Create</button>
@@ -1334,6 +1338,7 @@ export function renderPanel() {
     const fieldsHtml = state.fields.length
         ? state.fields.map((field, index) => renderFieldHtml(field, index, {
             targetScope: TARGET_SCOPE.CHARACTER,
+            runtime: state.swapEnabled ? state.__view?.runtime?.fields?.[field.id] : null,
         })).join('')
         : '<div class="dsf-empty">No Character Dynamic Fields yet.</div>';
 
@@ -1374,6 +1379,7 @@ export function renderPersonaPanel() {
     const fieldsHtml = state.fields.length
         ? state.fields.map((field, index) => renderFieldHtml(field, index, {
             targetScope: TARGET_SCOPE.PERSONA,
+            runtime: state.swapEnabled ? state.__view?.runtime?.fields?.[field.id] : null,
         })).join('')
         : '<div class="dsf-empty">No Persona Dynamic Fields yet.</div>';
 
@@ -1405,7 +1411,36 @@ export function renderKeywordMatchingSelectHtml(matching, target, targetScope = 
     `;
 }
 
-export function renderFieldHtml(field, index = 0, { targetScope = TARGET_SCOPE.CHARACTER } = {}) {
+// "In this chat: On/Off — why" line shown under each field's Inject checkbox.
+export function renderFieldRuntimeStatusHtml(normalized, runtimeField) {
+    if (!runtimeField || !isChatOpenForRuntime()) {
+        return '';
+    }
+
+    const on = runtimeField.enabled !== false;
+    let why = runtimeField.reason || (runtimeField.source === 'default' ? 'from the Inject setting' : '');
+
+    if (why && Number.isInteger(runtimeField.reasonMessage)) {
+        why += ` (message #${runtimeField.reasonMessage})`;
+    }
+
+    let gate = '';
+
+    if (on && splitKeywords(normalized.activatingTriggers).length) {
+        const remaining = Number(runtimeField.stickyRemaining) || 0;
+        gate = remaining > 0
+            ? ` · still active for ${remaining} more ${remaining === 1 ? 'reply' : 'replies'}`
+            : ' · injects only when its Activating Triggers match';
+    }
+
+    return `
+        <div class="dsf-field-status ${on ? 'dsf-field-status-on' : 'dsf-field-status-off'}" title="Whether this field is on in the current chat, and what last changed it. Swipes, deleted messages and other chats each have their own state.">
+            In this chat: <b>${on ? 'On' : 'Off'}</b>${why ? ` — ${escapeTextarea(why)}` : ''}${escapeTextarea(gate)}
+        </div>
+    `;
+}
+
+export function renderFieldHtml(field, index = 0, { targetScope = TARGET_SCOPE.CHARACTER, runtime = null } = {}) {
     const isPersona = targetScope === TARGET_SCOPE.PERSONA;
     const normalized = isPersona ? normalizePersonaField(field) : normalizeCharacterField(field);
     const triggerSources = normalizeTriggerSources(normalized.triggerSources);
@@ -1475,6 +1510,18 @@ export function renderFieldHtml(field, index = 0, { targetScope = TARGET_SCOPE.C
                         <div class="dsf-keyword-triggers-menu">
                             <div class="dsf-menu-close-row"><button type="button" class="menu_button dsf-menu-close" title="Close">×</button></div>
                             <div class="dsf-trigger-mode-row">${renderKeywordMatchingSelectHtml(normalized.keywordMatching, 'field', targetScope)}</div>
+                            <div class="dsf-trigger-mode-row dsf-scan-row">
+                                <label class="dsf-keyword-mode-wrap" title="How many recent messages the chat-based Trigger Sources (last user / assistant / narrator message) look at. 1 = only the latest one.">
+                                    <span>Scan last</span>
+                                    <input class="text_pole dsf-scan-depth" type="number" min="1" max="20" step="1" value="${normalized.scanDepth}">
+                                    <span>messages</span>
+                                </label>
+                                <label class="dsf-keyword-mode-wrap" title="After an Activating Trigger matches, keep injecting this field's Content for this many more replies, even if the keyword is not repeated. 0 = only while it matches.">
+                                    <span>Stay active for</span>
+                                    <input class="text_pole dsf-sticky-turns" type="number" min="0" max="50" step="1" value="${normalized.stickyTurns}">
+                                    <span>more replies</span>
+                                </label>
+                            </div>
                             <div class="dsf-keyword-trigger-group">
                                 <div class="dsf-label">Activating Triggers (Separate by comma, semicolon, or newline).</div>
                                 <textarea class="text_pole dsf-activating-triggers dsf-trigger-textarea" placeholder="Example: Intro, Pre-Reveal, EVOLUTION_STAGE: Pre-War Arc">${escapeTextarea(normalized.activatingTriggers)}</textarea>
@@ -1539,6 +1586,7 @@ export function renderFieldHtml(field, index = 0, { targetScope = TARGET_SCOPE.C
                         <input class="dsf-field-enabled" type="checkbox" ${normalized.enabled ? 'checked' : ''}>
                         <span>Inject</span>
                     </label>
+                    ${renderFieldRuntimeStatusHtml(normalized, runtime)}
                 </div>
 
                 <div class="dsf-field-actions">

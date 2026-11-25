@@ -1,5 +1,6 @@
 // Aspect: Evolutia — ui-events.js (split from the former single index.js).
 import { getAlterEgoScope } from './alter-ego-scope.js';
+import { normalizeCount } from './model.js';
 import {
     ALTER_EGO_AVATAR_MODE,
     ALTER_EGO_BASE_ID,
@@ -654,6 +655,25 @@ export function bindFieldEditHandlers() {
                 const field = findField(state, fieldId);
                 if (field) field.disablingTriggers = this.value;
             }, FIELD_EDIT_INPUT_UPDATE_OPTIONS);
+        });
+
+    $(document)
+        .off(`change.${MODULE_NAME}`, '.dsf-scan-depth, .dsf-sticky-turns')
+        .on(`change.${MODULE_NAME}`, '.dsf-scan-depth, .dsf-sticky-turns', function onFieldCountSettingChanged() {
+            const $field = $(this).closest('.dsf-field');
+            const fieldId = String($field.attr('data-field-id') || $field.data('field-id') || '');
+            const targetScope = getFieldTargetScope($field);
+            const isDepth = $(this).hasClass('dsf-scan-depth');
+            const value = isDepth ? normalizeCount(this.value, 1, 1, 20) : normalizeCount(this.value, 0, 0, 50);
+            this.value = String(value);
+
+            updateStateForTargetScope(targetScope, (state) => {
+                const field = findField(state, fieldId);
+
+                if (field) {
+                    field[isDepth ? 'scanDepth' : 'stickyTurns'] = value;
+                }
+            }, { rerender: false });
         });
 
     $(document)
