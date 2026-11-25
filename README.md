@@ -117,6 +117,10 @@ Available Trigger Sources include:
 
 For example, a field can be enabled when the assistant says a specific phrase, when a user message contains a keyword, or when relevant World Info / Lorebook content is active.
 
+### Avoid feedback loops with "Last Assistant Message"
+
+"Last Assistant Message" scans the model's own reply. Don't use it on personality or trait fields: when the model mentions a trait, the field switches on and reminds the model of that trait, the model mentions it again, and the loop repeats. That is exactly the flanderization this extension is meant to prevent. It is fine for things the model narrates and that should change state, like an outfit coming off or an injury.
+
 ## Trigger Actions
 
 Trigger Actions are optional action instructions that can inject before a field’s normal Content becomes active.

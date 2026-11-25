@@ -1440,6 +1440,15 @@ export function renderFieldRuntimeStatusHtml(normalized, runtimeField) {
     `;
 }
 
+// Hover hints for each Trigger Source in a field's menu.
+const TRIGGER_SOURCE_HINTS = Object.freeze({
+    [TRIGGER_SOURCE.LAST_USER_MESSAGE]: 'Your latest message(s).',
+    [TRIGGER_SOURCE.LAST_ASSISTANT_MESSAGE]: 'The model\'s own latest reply. Avoid this for personality or trait fields: when the reply mentions a trait, the field reminds the model of it, and the model mentions it again (a feedback loop that causes flanderization). Fine for things the model narrates, like an outfit change or an injury.',
+    [TRIGGER_SOURCE.SYSTEM_PROMPTS]: 'The latest narrator message (/sys).',
+    [TRIGGER_SOURCE.QUIET_PROMPTS]: 'Text injected by other extensions: Author\'s Note, Summarize, Vector memories, SillyBunny agents.',
+    [TRIGGER_SOURCE.WORLD_INFO_LOREBOOKS]: 'World Info / lorebook entries activated for this reply (title, keys and content).',
+});
+
 export function renderFieldHtml(field, index = 0, { targetScope = TARGET_SCOPE.CHARACTER, runtime = null } = {}) {
     const isPersona = targetScope === TARGET_SCOPE.PERSONA;
     const normalized = isPersona ? normalizePersonaField(field) : normalizeCharacterField(field);
@@ -1447,7 +1456,7 @@ export function renderFieldHtml(field, index = 0, { targetScope = TARGET_SCOPE.C
 
     const triggerSourceOptionsHtml = Object.values(TRIGGER_SOURCE)
         .map((source) => `
-            <label class="checkbox_label dsf-trigger-source-option">
+            <label class="checkbox_label dsf-trigger-source-option" title="${escapeAttribute(TRIGGER_SOURCE_HINTS[source] || '')}">
                 <input
                     class="dsf-trigger-source"
                     type="checkbox"
