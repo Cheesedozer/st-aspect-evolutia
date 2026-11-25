@@ -257,6 +257,9 @@ const UI = Object.freeze({
     SETTINGS_PERSONA_REMOVE_CURRENT_FIELDS_ID: 'dsf_persona_remove_current_fields',
     SETTINGS_PERSONA_RESET_EXTENSION_ID: 'dsf_persona_reset_extension',
 
+    SETTINGS_RESTORE_MACROS_ID: 'dsf_restore_description_macros',
+    SETTINGS_TEXT_COMPLETION_NOTE_ID: 'dsf_text_completion_note',
+
     // Backward-compatible aliases for existing character settings references.
     SETTINGS_REMOVE_FIELDS_ID: 'dsf_character_remove_all_fields',
     SETTINGS_REMOVE_CURRENT_FIELDS_ID: 'dsf_character_remove_current_fields',
@@ -4632,14 +4635,15 @@ async function setPromptManagerEntries({ aspectPromptId, nativePromptId, ensureP
         }
 
         updateSettingsActionState();
-        warnAboutPresetDescriptionMacros(manager);
+
+        if (useEvolutia) {
+            warnAboutPresetDescriptionMacros(manager);
+        }
     } catch (error) {
         console.error(`[${MODULE_NAME}] Failed to synchronize ${label} Prompt Manager entry:`, error);
         notify('error', `Failed to synchronize ${label} with Prompt Manager.`);
     }
 }
-
-function warnAboutPresetDescriptionMacros() {}
 
 function getCurrentChatUsesCharacterDynamicFields() {
     return getCurrentChatCharacterIds().some((characterId) => readCardState(characterId).swapEnabled);
@@ -4697,6 +4701,176 @@ async function syncPromptManagerWithActivePersonaState() {
 async function syncPromptManagerWithActiveStates() {
     await syncPromptManagerWithActiveState();
     await syncPromptManagerWithActivePersonaState();
+}
+
+// ============================================================================
+// Section 9A. Description Macro Replacement
+// ============================================================================
+// Purpose:
+// - Presets and story strings that write {{description}} / {{persona}} inside
+//   their own blocks would send the native description next to the Dynamic
+//   Fields. Offer (once per preset/template) to replace them with the Evolutia
+//   macros, which return the native text for anyone without Dynamic Fields.
+// - Originals are kept in extension settings and can be restored from the
+//   extension drawer ("Undo Macro Replacements").
+// ============================================================================
+
+const DESCRIPTION_MACRO_SWAPS = Object.freeze([
+    [/\{\{description\}\}/gi, CHARACTER_ASPECT_MACRO_TEXT],
+    [/\{\{persona\}\}/gi, PERSONA_ASPECT_MACRO_TEXT],
+]);
+const macroSwapAskedThisSession = new Set();
+
+function hasDescriptionMacros(text) {
+    return DESCRIPTION_MACRO_SWAPS.some(([pattern]) => new RegExp(pattern.source, 'i').test(String(text || '')));
+}
+
+function replaceDescriptionMacros(text) {
+    return DESCRIPTION_MACRO_SWAPS.reduce((value, [pattern, replacement]) => value.replace(pattern, replacement), String(text || ''));
+}
+
+function getMacroSwapSettings() {
+    const root = getExtensionSettingsRoot({ create: true });
+
+    if (!root) {
+        return { backups: [], declined: {} };
+    }
+
+    root.macroSwaps ??= {};
+    root.macroSwaps.backups ??= [];
+    root.macroSwaps.declined ??= {};
+    return root.macroSwaps;
+}
+
+async function confirmWithUser(html) {
+    const ctx = getContext();
+
+    if (typeof ctx?.callGenericPopup === 'function' && ctx?.POPUP_TYPE) {
+        const result = await ctx.callGenericPopup(html, ctx.POPUP_TYPE.CONFIRM, '', { okButton: 'Replace', cancelButton: 'Not now' });
+        return result === (ctx.POPUP_RESULT?.AFFIRMATIVE ?? 1) || result === true;
+    }
+
+    return window.confirm($('<div>').html(html).text());
+}
+
+function getCurrentChatCompletionPresetName() {
+    return String(getContext()?.chatCompletionSettings?.preset_settings_openai || 'Current preset');
+}
+
+async function offerDescriptionMacroSwap({ kind, target, items, describe, apply }) {
+    const declineKey = `${kind}:${target}`;
+    const settings = getMacroSwapSettings();
+
+    if (!items.length || settings.declined[declineKey] || macroSwapAskedThisSession.has(declineKey)) {
+        return false;
+    }
+
+    macroSwapAskedThisSession.add(declineKey);
+
+    const confirmed = await confirmWithUser(describe);
+
+    if (!confirmed) {
+        settings.declined[declineKey] = new Date().toISOString();
+        getSaveSettingsDebounced()?.();
+        return false;
+    }
+
+    for (const item of items) {
+        const original = item.get();
+        const replaced = replaceDescriptionMacros(original);
+        settings.backups.push({ kind, target, identifier: item.identifier, name: item.name, original, replaced, date: new Date().toISOString() });
+        item.set(replaced);
+    }
+
+    await apply();
+    getSaveSettingsDebounced()?.();
+    updateSettingsActionState();
+    notify('success', 'Replaced {{description}} / {{persona}} with the Evolutia macros. Undo from Extensions → Aspect: Evolutia.');
+    return true;
+}
+
+async function warnAboutPresetDescriptionMacros(manager) {
+    const order = getPromptOrder(manager);
+    const ownIds = new Set([CHARACTER_ASPECT_PROMPT_ID, PERSONA_ASPECT_PROMPT_ID]);
+    const prompts = order
+        .filter((entry) => entry?.enabled !== false && !ownIds.has(entry?.identifier))
+        .map((entry) => manager.getPromptById?.(entry.identifier))
+        .filter((prompt) => prompt && !prompt.marker && hasDescriptionMacros(prompt.content));
+
+    if (!prompts.length) {
+        return;
+    }
+
+    const preset = getCurrentChatCompletionPresetName();
+    const names = prompts.map((prompt) => `<li>${escapeTextarea(prompt.name || prompt.identifier)}</li>`).join('');
+
+    await offerDescriptionMacroSwap({
+        kind: 'preset',
+        target: preset,
+        items: prompts.map((prompt) => ({
+            identifier: prompt.identifier,
+            name: prompt.name || prompt.identifier,
+            get: () => String(prompt.content || ''),
+            set: (value) => { prompt.content = value; },
+        })),
+        describe: `<h3>Aspect: Evolutia</h3>
+            <p>Your Chat Completion preset <b>${escapeTextarea(preset)}</b> writes <code>{{description}}</code> or <code>{{persona}}</code> inside these prompts:</p>
+            <ul>${names}</ul>
+            <p>With Dynamic Fields on, the model would get both the old description and the fields. Replace them with the Evolutia macros? Characters and personas without Dynamic Fields still get their normal description.</p>
+            <p>The original text is saved; you can undo this in Extensions → Aspect: Evolutia.</p>`,
+        apply: () => saveAndRenderPromptManager(manager),
+    });
+}
+
+function restoreDescriptionMacroSwaps() {
+    const settings = getMacroSwapSettings();
+    const manager = getPromptManagerInstance();
+    const remaining = [];
+    let restored = 0;
+
+    for (const backup of settings.backups) {
+        let done = false;
+
+        if (backup.kind === 'preset' && manager && backup.target === getCurrentChatCompletionPresetName()) {
+            const prompt = manager.getPromptById?.(backup.identifier);
+
+            if (prompt && String(prompt.content || '') === backup.replaced) {
+                prompt.content = backup.original;
+                done = true;
+            }
+        }
+
+        if (backup.kind === 'story') {
+            done = restoreStoryStringBackup(backup);
+        }
+
+        if (done) {
+            restored += 1;
+            // The user undid it on purpose: don't offer it again for this target.
+            settings.declined[`${backup.kind}:${backup.target}`] = 'restored';
+        } else {
+            remaining.push(backup);
+        }
+    }
+
+    settings.backups = remaining;
+
+    if (restored && manager) {
+        saveAndRenderPromptManager(manager);
+    }
+
+    getSaveSettingsDebounced()?.();
+    updateSettingsActionState();
+
+    if (remaining.length) {
+        notify('info', `Restored ${restored} prompt(s). ${remaining.length} backup(s) belong to another preset/template or were edited since; switch to it and try again.`);
+    } else {
+        notify('success', restored ? `Restored ${restored} original prompt(s).` : 'Nothing to restore.');
+    }
+}
+
+function restoreStoryStringBackup() {
+    return false;
 }
 
 // ============================================================================
@@ -6534,7 +6708,19 @@ function scheduleSettingsActionStateUpdate() {
     }, FIELD_EDIT_SETTINGS_ACTION_DEBOUNCE_MS);
 }
 
+function updateMacroSwapActionState() {
+    const backups = getExtensionSettingsRoot()?.macroSwaps?.backups ?? [];
+    setSettingsButtonState(UI.SETTINGS_RESTORE_MACROS_ID, {
+        text: backups.length ? `Undo Macro Replacements (${backups.length})` : 'Undo Macro Replacements',
+        disabled: !backups.length,
+        title: backups.length
+            ? backups.map((backup) => `${backup.kind === 'story' ? 'Story string' : 'Preset'} "${backup.target}": ${backup.name}`).join('\n')
+            : 'Nothing to undo.',
+    });
+}
+
 function updateSettingsActionState() {
+    updateMacroSwapActionState();
     updateCharacterSettingsActionState();
     updatePersonaSettingsActionState();
 }
@@ -6641,6 +6827,22 @@ function mountExtensionSettings() {
                             </div>
                         </div>
 
+                        <div class="dsf-settings-scope-box dsf-settings-prompt-box">
+                            <div class="dsf-settings-scope-title"><span class="dsf-header-label">Prompt Setup</span></div>
+                            <div id="${UI.SETTINGS_TEXT_COMPLETION_NOTE_ID}" class="dsf-settings-note" style="display: none;"></div>
+                            <div class="dsf-settings-actions">
+                                <button
+                                    id="${UI.SETTINGS_RESTORE_MACROS_ID}"
+                                    type="button"
+                                    class="menu_button"
+                                    title="Put back the original {{description}} / {{persona}} text in presets and story strings that Aspect: Evolutia changed."
+                                    disabled
+                                >
+                                    Undo Macro Replacements
+                                </button>
+                            </div>
+                        </div>
+
                         <div class="dsf-settings-footer">
                             <span id="${UI.SETTINGS_VERSION_ID}">Version ${escapeTextarea(manifestMeta.version)}</span>
                             <span id="${UI.SETTINGS_AUTHOR_ID}">${escapeTextarea(manifestMeta.author)}</span>
@@ -6663,6 +6865,10 @@ function mountExtensionSettings() {
 // -----------------------------------------------------------------------------
 
 function bindExtensionSettingsEvents() {
+    $(document)
+        .off(`click.${MODULE_NAME}`, `#${UI.SETTINGS_RESTORE_MACROS_ID}`)
+        .on(`click.${MODULE_NAME}`, `#${UI.SETTINGS_RESTORE_MACROS_ID}`, restoreDescriptionMacroSwaps);
+
     $(document)
         .off(`click.${MODULE_NAME}`, `#${UI.SETTINGS_CHARACTER_REMOVE_FIELDS_ID}`)
         .on(`click.${MODULE_NAME}`, `#${UI.SETTINGS_CHARACTER_REMOVE_FIELDS_ID}`, removeAllFieldsForAllCharacters);
