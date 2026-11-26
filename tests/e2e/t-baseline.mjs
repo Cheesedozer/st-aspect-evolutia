@@ -1,0 +1,14 @@
+import { open, selectChar, send, swipe, clearRequests, lastPrompt, ev } from './st.mjs';
+import { wolfState, setCardState, newChat } from './fixtures.mjs';
+const { browser, page, logs } = await open();
+await setCardState(page, 'Seraphina', wolfState());
+await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(2500);
+await selectChar(page, 'Seraphina'); await newChat(page);
+const show = (l) => { const p = lastPrompt(); console.log(l, ['BODY_CONTENT','TRANSFORM_NOW','WOLF_FORM'].map(k => k+':'+p.includes(k)).join(' ')); };
+clearRequests();
+await send(page, 'The full moon rises.'); show('msg1');
+await swipe(page); show('swipe1');
+await swipe(page); show('swipe2');
+await send(page, 'Hello.'); show('msg2');
+console.log(logs.slice(0, 10).join('\n'));
+await browser.close();

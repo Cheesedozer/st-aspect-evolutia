@@ -1,0 +1,28 @@
+import { open, selectChar, send, clearRequests, lastPrompt, ev } from './st.mjs';
+import { setCardState, newChat, field } from './fixtures.mjs';
+const { browser, page, logs } = await open();
+await setCardState(page, 'Seraphina', { swapEnabled: false });
+await ev(page, async () => {
+  const c = SillyTavern.getContext(); const pu = c.powerUserSettings; const id = c.userAvatar ?? Object.keys(pu.personas)[0];
+  const f = (o) => ({ name: 'F', content: '', enabled: true, activatingTriggers: '', enablingTriggers: '', disablingTriggers: '', triggerSources: ['last_user_message'], activatingKeywordMode: 'any', enablingKeywordMode: 'any', disablingKeywordMode: 'any', ...o });
+  const fields = [f({ id: 'pbase', name: 'Look', content: 'PERSONA_BASE' }), f({ id: 'cloak', name: 'Cloak', enabled: false, enablingTriggers: 'put on cloak', disablingTriggers: 'remove cloak', content: 'PERSONA_CLOAK' })];
+  if (c.extensionSettings['st-description-swap-fields']) delete c.extensionSettings['st-description-swap-fields'].personaDynamicFields;
+  pu['st-description-swap-fields'] = { personaDynamicFields: { [id]: { swapEnabled: true, activeAlterEgoId: 'base', fields, alterEgos: [{ id: 'base', name: 'Me', fields }, { id: 'masked', name: 'Masked One', changeConditions: 'mask on', triggerSources: ['last_user_message'], fields: [f({ id: 'm', name: 'Mask', content: 'PERSONA_MASKED' })] }] } } };
+  c.saveSettingsDebounced(); await new Promise(r => setTimeout(r, 2500));
+});
+await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(3000);
+await selectChar(page, 'Seraphina'); await newChat(page);
+const K = ['PERSONA_BASE','PERSONA_CLOAK','PERSONA_MASKED'];
+let ok = true; const t = async (msg, want) => { await send(page, msg); const p = lastPrompt(); const r = K.filter(k => p.includes(k)).join(','); console.log(msg.padEnd(22), r || '(none)'); if (r !== want) { ok = false; console.log('  FAIL want', want); } };
+clearRequests();
+await t('Hi.', 'PERSONA_BASE');
+await t('I put on cloak.', 'PERSONA_BASE,PERSONA_CLOAK');
+await t('Next.', 'PERSONA_BASE,PERSONA_CLOAK');
+await t('Mask on now.', 'PERSONA_MASKED');
+const nm = await ev(page, () => { const c = SillyTavern.getContext(); return c.chat.at(-2).name; }); console.log('user msg name', nm);
+await newChat(page); clearRequests();
+await t('Fresh chat.', 'PERSONA_BASE');
+console.log(logs.filter(l => /pageerror|\[error\]/i.test(l)).slice(0,5).join('\n'));
+const mig = await ev(page, () => { const c = SillyTavern.getContext(); return { ext: Object.keys(c.extensionSettings["st-description-swap-fields"]?.personaDynamicFields || {}), legacyMigrated: !!c.powerUserSettings["st-description-swap-fields"]?.migratedToExtensionSettings }; }); console.log("migration", JSON.stringify(mig)); if (!mig.ext.length || !mig.legacyMigrated) ok = false;
+console.log(ok ? "ALL PASS" : "SOME FAILED");
+await browser.close();
