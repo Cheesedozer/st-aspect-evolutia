@@ -1,9 +1,9 @@
-import { open, selectChar, send, idle, clearRequests, lastPrompt, ev, setReply, H } from './st.mjs';
+import { open, selectChar, send, idle, clearRequests, lastPrompt, ev, setReply, H, connectIfOffline } from './st.mjs';
 import { wolfState, setCardState, newChat } from './fixtures.mjs';
 import fs from 'node:fs';
 const { browser, page, logs } = await open();
 await setCardState(page, 'Seraphina', wolfState());
-await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(2500);
+await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(2500); await connectIfOffline(page);
 await selectChar(page, 'Seraphina');
 const K = ['BODY_CONTENT','TRANSFORM_NOW','WOLF_FORM'];
 let ok = true; const chk = (l, want) => { const p = lastPrompt(); const r = K.filter(k => p.includes(k)).join(','); console.log(l.padEnd(30), r); if (r !== want) { ok = false; console.log('  FAIL want', want); } };

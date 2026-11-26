@@ -1,4 +1,4 @@
-import { open, ev, idle, clearRequests, requests } from './st.mjs';
+import { open, ev, idle, clearRequests, requests, connectIfOffline } from './st.mjs';
 import { wolfState, setCardState } from './fixtures.mjs';
 const { browser, page, logs } = await open();
 await setCardState(page, 'Seraphina', wolfState());
@@ -10,7 +10,7 @@ await ev(page, async () => { const { promptManager } = await import('/scripts/op
 console.log('before', JSON.stringify(await pmState()));
 const gid = await ev(page, async (other) => { const c = SillyTavern.getContext(); const av = n => c.characters.find(x => x.name === n).avatar;
   const r = await fetch('/api/groups/create', { method: 'POST', headers: c.getRequestHeaders(), body: JSON.stringify({ name: 'EvoGroup' + Date.now(), members: [av('Seraphina'), av(other)], avatar_url: '', allow_self_responses: false, activation_strategy: 0, generation_mode: 0, disabled_members: [], fav: false }) }); return (await r.json()).id; }, other);
-await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.groups?.length > 0); await page.waitForTimeout(2500);
+await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.groups?.length > 0); await page.waitForTimeout(2500); await connectIfOffline(page);
 await ev(page, async (gid) => { const m = await import('/scripts/group-chats.js'); await m.openGroupById(gid); }, gid); await page.waitForTimeout(2500);
 const after = await pmState(); console.log('group open', JSON.stringify(after));
 const trig = async (name, msg) => { clearRequests(); await ev(page, async ({ name, msg }) => { const c = SillyTavern.getContext(); await c.executeSlashCommandsWithOptions(`/send ${msg}`); await c.executeSlashCommandsWithOptions(`/trigger await=true ${name}`); }, { name, msg }); await page.waitForTimeout(500); await idle(page); const r = requests().at(-1); return r.body.messages.map(m => m.content).join('\n'); };

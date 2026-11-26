@@ -12,6 +12,7 @@ export async function open() {
   await page.goto(URL_);
   await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0, null, { timeout: 60000 });
   await page.waitForTimeout(2500);
+  await connectIfOffline(page);
   return { browser, page, logs };
 }
 export const ev = (page, fn, arg) => page.evaluate(fn, arg);
@@ -37,3 +38,13 @@ export function clearRequests() { try { fs.unlinkSync(H + 'requests.jsonl'); } c
 export function requests() { try { return fs.readFileSync(H + 'requests.jsonl', 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse); } catch { return []; } }
 export function lastPrompt() { const r = requests().at(-1); if (!r) return ''; return r.body.messages ? r.body.messages.map(m => `<${m.role}> ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`).join('\n') : r.body.prompt; }
 export function setReply(t) { if (t == null) { try { fs.unlinkSync(H + 'reply.txt'); } catch {} } else fs.writeFileSync(H + 'reply.txt', t); }
+
+// SillyTavern (unlike SillyBunny) does not auto-connect: press Connect for the
+// active API when it is offline, so the Send button becomes available.
+export async function connectIfOffline(page) {
+  const status = await page.evaluate(() => SillyTavern.getContext().onlineStatus);
+  if (status && status !== 'no_connection') return;
+  await page.evaluate(() => { const api = SillyTavern.getContext().mainApi; $(api === 'openai' ? '#api_button_openai' : `#api_button_${api}`).trigger('click'); });
+  await page.waitForFunction(() => SillyTavern.getContext().onlineStatus !== 'no_connection', null, { timeout: 15000 }).catch(() => {});
+  await page.waitForTimeout(500);
+}

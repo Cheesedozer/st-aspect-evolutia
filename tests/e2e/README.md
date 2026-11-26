@@ -19,6 +19,10 @@ a test World Info book, a group, and change settings.
 4. Make Playwright importable from this folder (for example
    `npm i playwright` here, or a symlink to a global install).
 
+Tested on SillyBunny 1.8.4 and SillyTavern staging 1.19.1. On plain
+SillyTavern the helper presses Connect when the API is offline; t08 and t13
+need a second character besides Seraphina.
+
 ## Run
 
 ```bash

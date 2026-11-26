@@ -1,9 +1,9 @@
-import { open, selectChar, ev } from './st.mjs';
+import { open, selectChar, ev, connectIfOffline } from './st.mjs';
 import { wolfState, setCardState, field } from './fixtures.mjs';
 const { browser, page, logs } = await open();
 const st = wolfState(); st.alterEgos.push({ id: 'wolfego', name: 'Moonwolf', changeConditions: 'howl', fields: [field({ id: 'wb', name: 'Wolf Body', content: 'EGO_WOLF_BODY' })] });
 await setCardState(page, 'Seraphina', st);
-await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(2500);
+await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(2500); await connectIfOffline(page);
 await selectChar(page, 'Seraphina');
 await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
 await ev(page, () => $('[data-dsf-export="clipboard_json"]').first().trigger('click')); await page.waitForTimeout(800);

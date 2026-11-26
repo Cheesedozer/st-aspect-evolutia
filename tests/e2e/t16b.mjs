@@ -1,9 +1,9 @@
-import { open, selectChar, send, clearRequests, ev, setReply, requests } from './st.mjs';
+import { open, selectChar, send, clearRequests, ev, setReply, requests, connectIfOffline } from './st.mjs';
 import { setCardState, newChat, field } from './fixtures.mjs';
 const { browser, page, logs } = await open();
 const fields = [field({ id: 'inj', name: 'Injuries', content: 'None.' })];
 await setCardState(page, 'Seraphina', { swapEnabled: true, activeAlterEgoId: 'base', alterEgos: [{ id: 'base', name: 'Seraphina', fields }], fields });
-await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(2500);
+await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(2500); await connectIfOffline(page);
 await ev(page, () => { const c = SillyTavern.getContext(); const cm = (c.extensionSettings.connectionManager ??= { profiles: [] }); cm.profiles = (cm.profiles || []).filter(p => p.id !== 'evo-test');
   cm.profiles.push({ id: 'evo-test', name: 'Evo Test Profile', mode: 'cc', api: 'custom', 'api-url': 'http://127.0.0.1:5001/v1', model: 'echo-profile', preset: 'Default' });
   const s = c.extensionSettings['st-description-swap-fields']; s.proposals = { ...(s.proposals || {}), profileId: 'evo-test' }; });

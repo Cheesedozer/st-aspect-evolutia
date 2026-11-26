@@ -1,4 +1,4 @@
-import { open, selectChar, send, clearRequests, lastPrompt, ev } from './st.mjs';
+import { open, selectChar, send, clearRequests, lastPrompt, ev, connectIfOffline } from './st.mjs';
 import { wolfState, setCardState, newChat, field, KEY } from './fixtures.mjs';
 import fs from 'node:fs';
 const { browser, page, logs } = await open();
@@ -7,7 +7,7 @@ legacy.alterEgos[0].fields = legacy.fields;
 legacy.alterEgos.push({ id: 'wolfego', name: 'Moonwolf', swapMode: 'triggered', changeConditions: 'howl', triggerSources: ['last_user_message'], fields: [field({ id: 'wbody', name: 'Wolf Body', content: 'EGO_WOLF_BODY' })] });
 legacy.alterEgos[0].changeConditions = 'dawn breaks';
 await setCardState(page, 'Seraphina', legacy);
-await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(2500);
+await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(2500); await connectIfOffline(page);
 await selectChar(page, 'Seraphina'); await newChat(page);
 const K = ['BODY_CONTENT','TRANSFORM_NOW','WOLF_FORM','EGO_WOLF_BODY'];
 const show = (l) => { const p = lastPrompt(); const r = K.filter(k => p.includes(k)).join(','); console.log(l.padEnd(28), r || '(none)'); return r; };

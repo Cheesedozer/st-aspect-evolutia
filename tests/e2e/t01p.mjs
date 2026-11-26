@@ -1,4 +1,4 @@
-import { open, selectChar, send, clearRequests, lastPrompt, ev } from './st.mjs';
+import { open, selectChar, send, clearRequests, lastPrompt, ev, connectIfOffline } from './st.mjs';
 import { setCardState, newChat, field } from './fixtures.mjs';
 const { browser, page, logs } = await open();
 await setCardState(page, 'Seraphina', { swapEnabled: false });
@@ -10,7 +10,7 @@ await ev(page, async () => {
   pu['st-description-swap-fields'] = { personaDynamicFields: { [id]: { swapEnabled: true, activeAlterEgoId: 'base', fields, alterEgos: [{ id: 'base', name: 'Me', fields }, { id: 'masked', name: 'Masked One', changeConditions: 'mask on', triggerSources: ['last_user_message'], fields: [f({ id: 'm', name: 'Mask', content: 'PERSONA_MASKED' })] }] } } };
   c.saveSettingsDebounced(); await new Promise(r => setTimeout(r, 2500));
 });
-await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(3000);
+await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(3000); await connectIfOffline(page);
 await selectChar(page, 'Seraphina'); await newChat(page);
 const K = ['PERSONA_BASE','PERSONA_CLOAK','PERSONA_MASKED'];
 let ok = true; const t = async (msg, want) => { await send(page, msg); const p = lastPrompt(); const r = K.filter(k => p.includes(k)).join(','); console.log(msg.padEnd(22), r || '(none)'); if (r !== want) { ok = false; console.log('  FAIL want', want); } };

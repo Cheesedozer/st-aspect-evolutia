@@ -1,4 +1,4 @@
-import { open, selectChar, send, clearRequests, lastPrompt, ev } from './st.mjs';
+import { open, selectChar, send, clearRequests, lastPrompt, ev, connectIfOffline } from './st.mjs';
 import { setCardState, newChat, field } from './fixtures.mjs';
 const { browser, page, logs } = await open();
 const fields = [
@@ -8,9 +8,9 @@ const fields = [
   field({ id: 'sys', name: 'Narr', activatingTriggers: 'thunder', triggerSources: ['system_prompts'], content: 'SYS_FIELD' }),
 ];
 await setCardState(page, 'Seraphina', { swapEnabled: true, activeAlterEgoId: 'base', alterEgos: [{ id: 'base', name: 'Seraphina', fields }], fields });
-await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(2500);
+await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(2500); await connectIfOffline(page);
 await selectChar(page, 'Seraphina'); await newChat(page);
-await ev(page, async () => { const c = SillyTavern.getContext(); try { await c.createNewWorldInfo('EvoTest', { interactive: false }); } catch (e) {}
+await ev(page, async () => { const c = SillyTavern.getContext(); try { const create = c.createNewWorldInfo ?? (await import('/scripts/world-info.js')).createNewWorldInfo; await create('EvoTest', { interactive: false }); } catch (e) {}
   await c.executeSlashCommandsWithOptions('/createentry file=EvoTest key=mines The Silver Mines are old.'); await c.executeSlashCommandsWithOptions('/world silent=true EvoTest'); });
 const K = ['BASE_FIELD','WI_FIELD','EXT_FIELD','SYS_FIELD'];
 let ok = true; const t = async (msg, want) => { await send(page, msg); const r = K.filter(k => lastPrompt().includes(k)).join(','); console.log(msg.padEnd(26), r); if (r !== want) { ok = false; console.log('  FAIL want', want); } };

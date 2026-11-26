@@ -1,4 +1,4 @@
-import { open, selectChar, send, clearRequests, lastPrompt, ev } from './st.mjs';
+import { open, selectChar, send, clearRequests, lastPrompt, ev, connectIfOffline } from './st.mjs';
 import { setCardState, newChat, field } from './fixtures.mjs';
 const { browser, page, logs } = await open();
 const fields = [
@@ -7,7 +7,7 @@ const fields = [
   field({ id: 'wolf', name: 'Wolf', enabled: false, enablingTriggers: 'full moon', keywordMatching: 'words', content: 'WOLF_FORM' }),
 ];
 await setCardState(page, 'Seraphina', { swapEnabled: true, activeAlterEgoId: 'base', alterEgos: [{ id: 'base', name: 'Seraphina', fields }, { id: 'w', name: 'Wolfling', changeConditions: 'howl', keywordMatching: 'words', fields: [field({ id: 'x', content: 'X' })] }], fields });
-await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(2500);
+await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(2500); await connectIfOffline(page);
 await selectChar(page, 'Seraphina'); await newChat(page); clearRequests();
 const K = ['DEPTH_FIELD', 'STICKY_FIELD', 'WOLF_FORM'];
 let ok = true; const t = async (msg, want) => { await send(page, msg); const r = K.filter(k => lastPrompt().includes(k)).join(','); console.log(msg.padEnd(22), r || '(none)'); if (r !== want) { ok = false; console.log('  FAIL want', want); } };

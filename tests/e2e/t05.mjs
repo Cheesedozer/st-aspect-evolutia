@@ -1,4 +1,4 @@
-import { open, selectChar, send, clearRequests, lastPrompt, ev } from './st.mjs';
+import { open, selectChar, send, clearRequests, lastPrompt, ev, connectIfOffline } from './st.mjs';
 import { setCardState, newChat, field } from './fixtures.mjs';
 const { browser, page, logs } = await open();
 const fields = [
@@ -8,7 +8,7 @@ const fields = [
   field({ id: 'multi', name: 'M', activatingTriggers: 'full moon', keywordMatching: 'words', content: 'MULTI_WORD' }),
 ];
 await setCardState(page, 'Seraphina', { swapEnabled: true, activeAlterEgoId: 'base', alterEgos: [{ id: 'base', name: 'Seraphina', fields }], fields });
-await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(2500);
+await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(2500); await connectIfOffline(page);
 await selectChar(page, 'Seraphina'); await newChat(page);
 const K = ['LEGACY_ARM','WORDS_ARM','REGEX_BLOOD','MULTI_WORD'];
 let ok = true; const t = async (msg, want) => { await send(page, msg); const r = K.filter(k => lastPrompt().includes(k)).join(','); console.log(msg.padEnd(36), r || '(none)'); if (r !== want) { ok = false; console.log('  FAIL want', want); } };

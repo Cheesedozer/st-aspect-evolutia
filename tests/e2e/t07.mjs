@@ -1,10 +1,10 @@
-import { open, selectChar, send, ev } from './st.mjs';
+import { open, selectChar, send, ev, connectIfOffline } from './st.mjs';
 import { setCardState, newChat, field, KEY } from './fixtures.mjs';
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==';
 const { browser, page, logs } = await open();
 const fields = [field({ id: 'b', name: 'B', content: 'X' })];
 await setCardState(page, 'Seraphina', { swapEnabled: true, activeAlterEgoId: 'img', alterEgos: [{ id: 'base', name: 'Seraphina', fields }, { id: 'img', name: 'Pictured', avatarMode: 'image_file', avatarDataUrl: PNG, fields }], fields });
-await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(2500);
+await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(2500); await connectIfOffline(page);
 await selectChar(page, 'Seraphina'); await newChat(page);
 // simulate a legacy message carrying the data URL
 await send(page, 'Hello.');

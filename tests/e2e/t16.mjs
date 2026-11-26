@@ -1,4 +1,4 @@
-import { open, selectChar, send, clearRequests, lastPrompt, ev, setReply, requests, idle } from './st.mjs';
+import { open, selectChar, send, clearRequests, lastPrompt, ev, setReply, requests, idle, connectIfOffline } from './st.mjs';
 import { setCardState, newChat, field } from './fixtures.mjs';
 const { browser, page, logs } = await open();
 const fields = [
@@ -7,7 +7,7 @@ const fields = [
   field({ id: 'out', name: 'Outfit', content: 'A green dress.' }),
 ];
 await setCardState(page, 'Seraphina', { swapEnabled: true, activeAlterEgoId: 'base', alterEgos: [{ id: 'base', name: 'Seraphina', fields }], fields });
-await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(2500);
+await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(2500); await connectIfOffline(page);
 await selectChar(page, 'Seraphina'); await newChat(page);
 await send(page, 'I bandage your left arm after the fight.');
 const userIndex = await ev(page, () => SillyTavern.getContext().chat.findLastIndex(m => m.is_user));

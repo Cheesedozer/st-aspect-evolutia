@@ -1,14 +1,14 @@
-import { open, selectChar, send, clearRequests, lastPrompt, ev } from './st.mjs';
+import { open, selectChar, send, clearRequests, lastPrompt, ev, connectIfOffline } from './st.mjs';
 import { wolfState, setCardState, newChat } from './fixtures.mjs';
 const { browser, page, logs } = await open();
 await setCardState(page, 'Seraphina', wolfState());
 await ev(page, async () => { const { promptManager } = await import('/scripts/openai.js');
   if (!promptManager.getPromptById('evoTestCustom')) promptManager.addPrompt({ name: 'My Character Block', role: 'system', content: '<character>{{description}}</character>', system_prompt: false, marker: false }, 'evoTestCustom');
-  const o = promptManager.getPromptOrderForCharacter(promptManager.activeCharacter); if (!o.find(e => e.identifier === 'evoTestCustom')) o.unshift({ identifier: 'evoTestCustom', enabled: true }); o.find(e => e.identifier === 'evoTestCustom').enabled = true;
+  const o = promptManager.getPromptOrderForCharacter(promptManager.activeCharacter); if (!o.find(e => e.identifier === 'evoTestCustom')) o.unshift({ identifier: 'evoTestCustom', enabled: true }); o.find(e => e.identifier === 'evoTestCustom').enabled = true; promptManager.getPromptById('evoTestCustom').content = '<character>{{description}}</character>';
   const s = SillyTavern.getContext().extensionSettings['st-description-swap-fields']; if (s?.macroSwaps) s.macroSwaps = { backups: [], declined: {} };
   await promptManager.saveServiceSettings(); SillyTavern.getContext().saveSettingsDebounced(); });
 await page.waitForTimeout(2000);
-await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(2500);
+await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(2500); await connectIfOffline(page);
 const nativeDesc = await ev(page, () => SillyTavern.getContext().characters.find(c => c.name === 'Seraphina').description.slice(0, 40));
 await selectChar(page, 'Seraphina');
 const popup = await page.waitForSelector('.popup-button-ok', { timeout: 15000 }).catch(() => null);
