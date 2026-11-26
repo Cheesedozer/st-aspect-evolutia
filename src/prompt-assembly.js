@@ -1,4 +1,5 @@
 // Aspect: Evolutia — prompt-assembly.js (split from the former single index.js).
+import { applyChatContentOverrides } from './proposals.js';
 import {
     getCharacterRuntimeKey,
     getLiveChat,
@@ -492,7 +493,8 @@ export function computeCharacterGeneration(characterId, chat, { includeTriggerAc
     }
 
     const alterEgo = cardState.alterEgos.find((entry) => entry.id === runtime.alterEgoId) ?? cardState.alterEgos[0];
-    const { entries, actions } = buildFieldPromptEntriesForGeneration(alterEgo?.fields || [], runtime, {
+    const fields = applyChatContentOverrides(TARGET_SCOPE.CHARACTER, key, alterEgo?.fields || []);
+    const { entries, actions } = buildFieldPromptEntriesForGeneration(fields, runtime, {
         targetScope: TARGET_SCOPE.CHARACTER,
         chat,
         includeTriggerActions,
@@ -625,7 +627,8 @@ export function computePersonaGeneration(personaId, chat, { endExclusive = undef
     }
 
     const alterEgo = cardState.alterEgos.find((entry) => entry.id === runtime.alterEgoId) ?? cardState.alterEgos[0];
-    const { entries } = buildFieldPromptEntriesForGeneration(alterEgo?.fields || [], runtime, {
+    const fields = applyChatContentOverrides(TARGET_SCOPE.PERSONA, key, alterEgo?.fields || []);
+    const { entries } = buildFieldPromptEntriesForGeneration(fields, runtime, {
         targetScope: TARGET_SCOPE.PERSONA,
         chat,
         includeTriggerActions: false,

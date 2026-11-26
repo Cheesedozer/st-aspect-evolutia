@@ -1,5 +1,6 @@
 // Aspect: Evolutia — ui-events.js (split from the former single index.js).
 import { getAlterEgoScope } from './alter-ego-scope.js';
+import { handleChatOverrideAction, runFieldUpdateProposals } from './proposals.js';
 import { normalizeCount } from './model.js';
 import {
     ALTER_EGO_AVATAR_MODE,
@@ -655,6 +656,38 @@ export function bindFieldEditHandlers() {
                 const field = findField(state, fieldId);
                 if (field) field.disablingTriggers = this.value;
             }, FIELD_EDIT_INPUT_UPDATE_OPTIONS);
+        });
+
+    $(document)
+        .off(`change.${MODULE_NAME}`, '.dsf-field-core')
+        .on(`change.${MODULE_NAME}`, '.dsf-field-core', function onFieldCoreChanged() {
+            const $field = $(this).closest('.dsf-field');
+            const fieldId = String($field.attr('data-field-id') || $field.data('field-id') || '');
+            const checked = Boolean(this.checked);
+
+            updateStateForTargetScope(getFieldTargetScope($field), (state) => {
+                const field = findField(state, fieldId);
+
+                if (field) {
+                    field.core = checked;
+                }
+            }, { rerender: false });
+        });
+
+    $(document)
+        .off(`click.${MODULE_NAME}`, '.dsf-chat-override-revert, .dsf-chat-override-promote')
+        .on(`click.${MODULE_NAME}`, '.dsf-chat-override-revert, .dsf-chat-override-promote', function onChatOverrideAction(event) {
+            event.preventDefault();
+            const $field = $(this).closest('.dsf-field');
+            const fieldId = String($field.attr('data-field-id') || '');
+            handleChatOverrideAction(getFieldTargetScope($field), fieldId, $(this).hasClass('dsf-chat-override-promote') ? 'promote' : 'revert');
+        });
+
+    $(document)
+        .off(`click.${MODULE_NAME}`, '.dsf-propose-updates')
+        .on(`click.${MODULE_NAME}`, '.dsf-propose-updates', function onProposeUpdatesClicked(event) {
+            event.preventDefault();
+            runFieldUpdateProposals(getFieldTargetScope($(this)));
         });
 
     $(document)

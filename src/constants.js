@@ -231,6 +231,9 @@ export const UI = Object.freeze({
     SETTINGS_PERSONA_RESET_EXTENSION_ID: 'dsf_persona_reset_extension',
 
     SETTINGS_RESTORE_MACROS_ID: 'dsf_restore_description_macros',
+    SETTINGS_PROPOSAL_PROFILE_ID: 'dsf_proposal_profile',
+    SETTINGS_PROPOSAL_MESSAGES_ID: 'dsf_proposal_messages',
+    SETTINGS_PROPOSAL_TOKENS_ID: 'dsf_proposal_tokens',
     SETTINGS_TEXT_COMPLETION_NOTE_ID: 'dsf_text_completion_note',
 });
 

@@ -1,5 +1,6 @@
 // Aspect: Evolutia — ui-render.js (split from the former single index.js).
 import { getAlterEgoScope } from './alter-ego-scope.js';
+import { isCoreField, renderChatContentOverrideHtml } from './proposals.js';
 import { isChatOpenForRuntime } from './chat-runtime.js';
 import { splitKeywords } from './prompt-assembly.js';
 import {
@@ -875,6 +876,7 @@ export function mountUi() {
                         </div>
                     </div>
 
+                    <button type="button" class="menu_button dsf-propose-updates" data-target-scope="${TARGET_SCOPE.CHARACTER}" title="Ask the model to propose updates to these fields from the recent chat. Nothing is applied until you approve it.">Propose Updates</button>
                     <button id="${UI.ADD_BOTTOM_ID}" type="button" class="menu_button">Add Field</button>
                     <input id="${UI.CHARACTER_CARD_IMPORT_FILE_ID}" type="file" accept=".json,application/json" hidden>
                     <input id="${UI.DYNAMIC_FIELDS_IMPORT_FILE_ID}" type="file" accept=".json,application/json" hidden>
@@ -973,6 +975,7 @@ export function mountPersonaUi() {
                         </div>
                     </div>
 
+                    <button type="button" class="menu_button dsf-propose-updates" data-target-scope="${TARGET_SCOPE.PERSONA}" title="Ask the model to propose updates to these fields from the recent chat. Nothing is applied until you approve it.">Propose Updates</button>
                     <button id="${UI.PERSONA_ADD_BOTTOM_ID}" type="button" class="menu_button">Add Field</button>
                     <input id="${UI.PERSONA_DYNAMIC_FIELDS_IMPORT_FILE_ID}" type="file" accept=".json,application/json" hidden>
                 </div>
@@ -1511,6 +1514,7 @@ export function renderFieldHtml(field, index = 0, { targetScope = TARGET_SCOPE.C
 
             <div class="dsf-label">Content (Leave empty to prevent injection).</div>
             <textarea class="text_pole dsf-content" placeholder="">${escapeTextarea(normalized.content)}</textarea>
+            ${renderChatContentOverrideHtml(normalized, targetScope)}
 
             <div class="dsf-trigger-menu-stack">
                 <div class="dsf-trigger-control-row">
@@ -1594,6 +1598,10 @@ export function renderFieldHtml(field, index = 0, { targetScope = TARGET_SCOPE.C
                     <label class="checkbox_label" title="When enabled, this field can be injected if its content and trigger conditions allow it.">
                         <input class="dsf-field-enabled" type="checkbox" ${normalized.enabled ? 'checked' : ''}>
                         <span>Inject</span>
+                    </label>
+                    <label class="checkbox_label dsf-core-label" title="Core fields are never sent to the model as editable when you ask for update proposals. Unset fields named Background or Personality count as Core.">
+                        <input class="dsf-field-core" type="checkbox" ${isCoreField(normalized) ? 'checked' : ''}>
+                        <span>Core (no proposals)</span>
                     </label>
                     ${renderFieldRuntimeStatusHtml(normalized, runtime)}
                 </div>

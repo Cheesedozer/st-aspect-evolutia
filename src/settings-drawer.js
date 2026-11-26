@@ -1,4 +1,6 @@
 // Aspect: Evolutia — settings-drawer.js (split from the former single index.js).
+import { getProposalProfiles, getProposalSettings, saveProposalSettings } from './proposals.js';
+import { normalizeCount } from './model.js';
 import {
     applyActiveAlterEgoNameToSillyTavern,
     refreshActiveAlterEgoVisualIdentity,
@@ -59,6 +61,7 @@ import {
     renderPersonaPanel,
 } from './ui-render.js';
 import {
+    escapeAttribute,
     escapeTextarea,
     getAuthorName,
     notify,
@@ -657,6 +660,23 @@ export function mountExtensionSettings() {
                             </div>
                         </div>
 
+                        <div class="dsf-settings-scope-box dsf-settings-proposals-box">
+                            <div class="dsf-settings-scope-title"><span class="dsf-header-label">Field Update Proposals</span></div>
+                            <div class="dsf-settings-note">The "Propose Updates" button in the field editor (or <code>/evolutia-propose</code>) asks a model to suggest field updates from the recent chat. You approve each one; approved updates apply to that chat only.</div>
+                            <label class="dsf-settings-row" title="Which saved Connection Profile to use for proposals. Your active connection is not changed. 'Current connection' uses whatever is connected now.">
+                                <span>Connection</span>
+                                <select id="${UI.SETTINGS_PROPOSAL_PROFILE_ID}" class="text_pole"></select>
+                            </label>
+                            <label class="dsf-settings-row" title="How many recent chat messages the model reads.">
+                                <span>Messages to read</span>
+                                <input id="${UI.SETTINGS_PROPOSAL_MESSAGES_ID}" class="text_pole" type="number" min="2" max="200" step="1">
+                            </label>
+                            <label class="dsf-settings-row" title="Maximum length of the model's answer, in tokens.">
+                                <span>Max reply tokens</span>
+                                <input id="${UI.SETTINGS_PROPOSAL_TOKENS_ID}" class="text_pole" type="number" min="100" max="8000" step="50">
+                            </label>
+                        </div>
+
                         <div class="dsf-settings-footer">
                             <span id="${UI.SETTINGS_VERSION_ID}">Version ${escapeTextarea(manifestMeta.version)}</span>
                             <span id="${UI.SETTINGS_AUTHOR_ID}">${escapeTextarea(manifestMeta.author)}</span>
@@ -669,6 +689,7 @@ export function mountExtensionSettings() {
 
     $target.append($settings);
 
+    renderProposalSettings();
     bindExtensionSettingsEvents();
     renderSettingsFooter();
     updateSettingsActionState();
@@ -678,7 +699,37 @@ export function mountExtensionSettings() {
 // Extensions Drawer Settings - Events
 // -----------------------------------------------------------------------------
 
+export function renderProposalSettings() {
+    const settings = getProposalSettings();
+    const profiles = getProposalProfiles();
+    const options = [`<option value="">Current connection</option>`]
+        .concat(profiles.map((profile) => `<option value="${escapeAttribute(profile.id)}" ${profile.id === settings.profileId ? 'selected' : ''}>${escapeTextarea(profile.name || profile.id)}</option>`));
+
+    if (settings.profileId && !profiles.some((profile) => profile.id === settings.profileId)) {
+        options.push(`<option value="${escapeAttribute(settings.profileId)}" selected>(missing profile)</option>`);
+    }
+
+    $(`#${UI.SETTINGS_PROPOSAL_PROFILE_ID}`).html(options.join(''));
+    $(`#${UI.SETTINGS_PROPOSAL_MESSAGES_ID}`).val(settings.messageCount);
+    $(`#${UI.SETTINGS_PROPOSAL_TOKENS_ID}`).val(settings.maxTokens);
+}
+
 export function bindExtensionSettingsEvents() {
+    $(document)
+        .off(`change.${MODULE_NAME}`, `#${UI.SETTINGS_PROPOSAL_PROFILE_ID}, #${UI.SETTINGS_PROPOSAL_MESSAGES_ID}, #${UI.SETTINGS_PROPOSAL_TOKENS_ID}`)
+        .on(`change.${MODULE_NAME}`, `#${UI.SETTINGS_PROPOSAL_PROFILE_ID}, #${UI.SETTINGS_PROPOSAL_MESSAGES_ID}, #${UI.SETTINGS_PROPOSAL_TOKENS_ID}`, () => {
+            saveProposalSettings({
+                profileId: String($(`#${UI.SETTINGS_PROPOSAL_PROFILE_ID}`).val() || ''),
+                messageCount: normalizeCount($(`#${UI.SETTINGS_PROPOSAL_MESSAGES_ID}`).val(), 20, 2, 200),
+                maxTokens: normalizeCount($(`#${UI.SETTINGS_PROPOSAL_TOKENS_ID}`).val(), 800, 100, 8000),
+            });
+            renderProposalSettings();
+        });
+
+    $(document)
+        .off(`focus.${MODULE_NAME}`, `#${UI.SETTINGS_PROPOSAL_PROFILE_ID}`)
+        .on(`focus.${MODULE_NAME}`, `#${UI.SETTINGS_PROPOSAL_PROFILE_ID}`, renderProposalSettings);
+
     $(document)
         .off(`click.${MODULE_NAME}`, `#${UI.SETTINGS_RESTORE_MACROS_ID}`)
         .on(`click.${MODULE_NAME}`, `#${UI.SETTINGS_RESTORE_MACROS_ID}`, restoreDescriptionMacroSwaps);

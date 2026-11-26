@@ -987,3 +987,68 @@
     flex-direction: column;
     gap: 6px;
 }
+
+/* Field update proposals */
+.dsf-proposals del {
+    background: rgba(220, 80, 80, 0.25);
+    text-decoration: line-through;
+}
+
+.dsf-proposals ins {
+    background: rgba(80, 200, 120, 0.25);
+    text-decoration: none;
+}
+
+.dsf-proposal {
+    border: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.2));
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin: 8px 0;
+    text-align: left;
+}
+
+.dsf-proposal-diff {
+    white-space: pre-wrap;
+    margin: 6px 0;
+    font-size: 0.95em;
+}
+
+.dsf-proposal-evidence,
+.dsf-proposal-dropped {
+    font-size: 0.85em;
+    opacity: 0.8;
+}
+
+.dsf-proposal-warning {
+    font-size: 0.85em;
+    color: var(--warning, #e0a040);
+}
+
+.dsf-chat-override {
+    font-size: 0.9em;
+    margin: 4px 0 6px;
+    padding: 6px 8px;
+    border-left: 3px solid var(--SmartThemeQuoteColor, #e0a040);
+}
+
+.dsf-chat-override-text {
+    white-space: pre-wrap;
+    margin: 4px 0;
+}
+
+.dsf-chat-override-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.dsf-settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 4px 0;
+}
+
+.dsf-settings-row input[type="number"] {
+    width: 6em;
+}

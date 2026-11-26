@@ -205,6 +205,9 @@ export function normalizeField(field = {}, options = {}) {
         keywordMatching: normalizeKeywordMatching(field.keywordMatching),
         scanDepth: normalizeCount(field.scanDepth, 1, 1, 20),
         stickyTurns: normalizeCount(field.stickyTurns, 0, 0, 50),
+        // Core fields are never offered to model-assisted proposals. Unset =
+        // decided by name (Background, Personality...), see isCoreField().
+        ...(typeof field.core === 'boolean' ? { core: field.core } : {}),
         triggerActionInstruction: includeTriggerActions ? String(field.triggerActionInstruction ?? '') : '',
         content: String(field.content ?? ''),
     };
@@ -688,6 +691,7 @@ export function exportFieldForJson(field, index = 0, options = {}) {
         keywordMatching: normalized.keywordMatching,
         scanDepth: normalized.scanDepth,
         stickyTurns: normalized.stickyTurns,
+        ...(typeof normalized.core === 'boolean' ? { core: normalized.core } : {}),
         activatingTriggers: splitKeywords(normalized.activatingTriggers),
         enablingTriggers: splitKeywords(normalized.enablingTriggers),
         disablingTriggers: splitKeywords(normalized.disablingTriggers),
@@ -743,6 +747,7 @@ export function importFieldFromJson(field = {}, options = {}) {
         keywordMatching: field.keywordMatching,
         scanDepth: field.scanDepth,
         stickyTurns: field.stickyTurns,
+        core: field.core,
         triggerActionInstruction: includeTriggerActions ? joinLinesFromJson(field.triggerActionInstruction) : '',
         content: joinLinesFromJson(field.content),
     }, {

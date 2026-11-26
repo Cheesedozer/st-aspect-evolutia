@@ -147,7 +147,9 @@ export function setChatRuntimeOverride(scope, key, change) {
 
     bucket[key] = next;
     invalidateRuntimeCache();
-    getContext()?.saveMetadataDebounced?.();
+    const ctx = getContext();
+    Promise.resolve(typeof ctx?.saveMetadata === 'function' ? ctx.saveMetadata() : ctx?.saveMetadataDebounced?.())
+        .catch((error) => console.warn(`[${MODULE_NAME}] Could not save chat metadata:`, error));
 }
 
 // Builds the runtime state for one character/persona from (newest first):

@@ -1,4 +1,5 @@
 // Aspect: Evolutia — events.js (split from the former single index.js).
+import { registerProposalSlashCommand } from './proposals.js';
 import {
     applyActiveAlterEgoNameToSillyTavern,
     applyPersonaAlterEgoSwapForUserMessage,
@@ -287,6 +288,7 @@ export function registerEvents() {
 
     const onAppReady = () => {
         ensureLegacyMacrosIfNeeded();
+        registerProposalSlashCommand();
         mountExtensionSettings();
         mountUi();
         mountPersonaUiIfMissing();
