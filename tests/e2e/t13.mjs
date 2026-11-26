@@ -1,0 +1,22 @@
+import { open, selectChar, ev, connectIfOffline } from './st.mjs';
+import { wolfState, setCardState, field } from './fixtures.mjs';
+const { browser, page, logs } = await open();
+const st = wolfState(); st.alterEgos.push({ id: 'wolfego', name: 'Moonwolf', changeConditions: 'howl', fields: [field({ id: 'wb', name: 'Wolf Body', content: 'EGO_WOLF_BODY' })] });
+await setCardState(page, 'Seraphina', st);
+await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(2500); await connectIfOffline(page);
+await selectChar(page, 'Seraphina');
+await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+await ev(page, () => $('[data-dsf-export="clipboard_json"]').first().trigger('click')); await page.waitForTimeout(800);
+const json = await ev(page, () => navigator.clipboard.readText());
+const payload = JSON.parse(json); console.log('export version', payload.version, 'alterEgos', payload.alterEgos?.map(e => e.name), 'fields', payload.fields.length);
+// import into the other character
+const other = await ev(page, () => SillyTavern.getContext().characters.find(c => c.name !== 'Seraphina').name);
+await setCardState(page, other, { swapEnabled: true });
+await selectChar(page, other);
+await ev(page, () => $('[data-dsf-import="clipboard_json"]').first().trigger('click')); await page.waitForTimeout(1500);
+const r = await ev(page, () => { const c = SillyTavern.getContext(); const d = c.characters[c.characterId].data.extensions['st-description-swap-fields']; return { egos: d.alterEgos.map(e => e.name + ':' + e.fields.length), fields: d.fields.map(f => f.name) }; });
+console.log('imported', JSON.stringify(r));
+const ok = payload.alterEgos?.length === 2 && r.egos.some(e => e.startsWith('Moonwolf:1'));
+console.log(logs.filter(l => /pageerror|\[error\]/i.test(l)).slice(0,5).join('\n'));
+console.log(ok ? 'ALL PASS' : 'SOME FAILED');
+await browser.close();

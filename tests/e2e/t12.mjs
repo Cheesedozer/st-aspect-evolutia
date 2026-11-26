@@ -1,0 +1,15 @@
+import { open, selectChar, send, clearRequests, requests, connectIfOffline } from './st.mjs';
+import { wolfState, setCardState, newChat } from './fixtures.mjs';
+const { browser, page } = await open();
+const st = wolfState(); st.fields[1].triggerActionInstruction = '{{char}} transforms into a werewolf, howling at {{user}}.'; st.alterEgos[0].fields = st.fields;
+await setCardState(page, 'Seraphina', st);
+await page.reload(); await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.characters?.length > 0); await page.waitForTimeout(2500); await connectIfOffline(page);
+await selectChar(page, 'Seraphina'); await newChat(page); clearRequests();
+await send(page, 'The full moon rises.');
+const msgs = requests().at(-1).body.messages;
+const idx = msgs.findIndex(m => String(m.content).includes('Story event'));
+console.log(msgs.slice(-3).map(m => `${m.role}: ${String(m.content).slice(0, 200)}`).join('\n---\n'));
+console.log('action index', idx, 'of', msgs.length, 'in description?', msgs.some(m => String(m.content).includes('[CHARACTER DEFINITIONS]') && String(m.content).includes('transforms')));
+await send(page, 'Next.');
+console.log('next reply has action note', requests().at(-1).body.messages.some(m => String(m.content).includes('Story event')));
+await browser.close();
